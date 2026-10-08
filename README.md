@@ -3,9 +3,9 @@
 bHaptics support for CircuitLord's Titanfall 2 VR mod, built as a Northstar
 plugin (native DLL) plus a small Northstar mod (Squirrel scripts).
 
-Current state (v0.2.0): the plugin connects to the bHaptics Player, plays a
+Current state (v0.3.0): the plugin connects to the bHaptics Player, plays a
 heartbeat on startup, and gives the game scripts `BH_*` functions. The mod's
-scripts use them for damage, health, death, movement and Titan events.
+scripts use them for damage, health, death, movement, Titan events and recoil.
 
 ## Where everything goes
 
@@ -56,7 +56,7 @@ only tracks and updates its own files, so ours survive mod updates.
 5. Check `TF2VR\logs\nslog<newest>.txt` for lines like:
 
 ```
-[BHAPTICS] Titanfall2VR_bhaptics v0.2.0 loaded
+[BHAPTICS] Titanfall2VR_bhaptics v0.3.0 loaded
 [BHAPTICS] [DEBUG] Loading bHaptics library from G:\...\TF2VR\plugins\lib\bhaptics_library.dll
 [BHAPTICS] [DEBUG] bHaptics library loaded, waiting for bHaptics Player...
 [BHAPTICS] Connected to bHaptics Player after 312 ms
@@ -105,6 +105,16 @@ All names are lower case, as they must be in the bHaptics portal.
 | `player_exit_titan` | Leaving the Titan | server |
 | `titan_hit` | Embarked Titan loses a health segment | server |
 | `titan_destroyed` | Our Titan (embarked or BT as auto-titan) is destroyed | server |
+| `recoil_pistol_r` / `_l` | Shot with a pistol or SMG, right / left hand | client |
+| `recoil_rifle_r` / `_l` | Shot with a rifle or LMG | client |
+| `recoil_shotgun_r` / `_l` | Shot with a shotgun, sniper or launcher | client |
+
+Recoil: shots are detected when the active weapon's magazine count drops
+(no game hook involved). The hand comes from the VR mod's
+`TF2VR_WeaponHand()` (0 = left, 1 = right; the main hand when held with
+both hands). The weapon groups are in `BH_RecoilGroup()` in the client
+script; unknown weapons fall back to `rifle` and are logged. Weapons
+without a magazine (charge weapons) and Titan weapons play no recoil yet.
 
 Tuning constants (loop intervals, low-health threshold) are at the top of the
 two `.nut` files.
@@ -142,18 +152,6 @@ With `Level::Debug`, the log should show:
 4. `Health ... -> ...` lines while taking damage and regenerating, and a
    `Play '...'` line for each event.
 
-## Recoil probe (temporary)
-
-`tf2vr_bh_probe_server.nut` and `tf2vr_bh_probe_client.nut` test two things
-for gun recoil without help from the VR mod:
-
-- whether `AddCallback_OnWeaponAttack` fires in the campaign (server), and
-- what CircuitLord's `TF2VR_WeaponHand()` returns (client, signature guessed).
-
-Search the log for `[RECOIL-PROBE]`. If one of the two files causes a script
-compile error, remove its entry from `mod.json`; the rest of the mod is
-unaffected. Both files go away once recoil is implemented.
-
 ## Troubleshooting
 
 | Log line / symptom | Meaning |
@@ -185,4 +183,4 @@ mod\Titanfall2VR_bhaptics\   Northstar mod, copied to TF2VR\mods\
 
 ## Next steps
 
-- Recoil: wire up CircuitLord's gun-fired callback (with hand) once available.
+- Recoil for weapons without a magazine, and Titan weapons.

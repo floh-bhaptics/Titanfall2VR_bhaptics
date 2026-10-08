@@ -28,6 +28,8 @@ struct
 	int   lastMaxHealth       = -1
 	bool  wasHealing          = false
 	float lastHealingTime     = -999.0
+	entity recoilWeapon
+	int    recoilClip         = -1
 } file
 
 #endif
@@ -46,6 +48,7 @@ void function TF2VR_BH_ClientInit()
 		AddLocalPlayerTookDamageCallback( id, BH_OnLocalPlayerTookDamage )
 
 	thread BH_HealthWatchThread()
+	thread BH_RecoilWatchThread()
 #else
 	printt( "[Titanfall2VR_bhaptics] client script loaded, native plugin NOT loaded - haptics disabled" )
 #endif
@@ -210,6 +213,118 @@ void function BH_OnLocalPlayerSpawned( entity player )
 void function BH_OnTitanCockpitCreated( entity cockpit, entity player )
 {
 	BH_Play( "player_enter_titan" )
+}
+
+// ===================================================================
+//  11. Recoil
+//
+//  Shots are detected by watching the active weapon's magazine: when the
+//  clip count drops, a shot was fired. Reloads (count goes up) and weapon
+//  switches only reset the baseline. The hand comes from CircuitLord's
+//  TF2VR_WeaponHand() (0 = left, 1 = right; main hand when two-handed).
+//  Weapons without a magazine (charge weapons) don't trigger this.
+// ===================================================================
+
+void function BH_RecoilWatchThread()
+{
+	while ( true )
+	{
+		WaitFrame()
+
+		entity player = GetLocalClientPlayer()
+		if ( !IsValid( player ) || !IsAlive( player ) )
+		{
+			file.recoilWeapon = null
+			continue
+		}
+
+		entity weapon = player.GetActiveWeapon()
+		if ( !IsValid( weapon ) )
+		{
+			file.recoilWeapon = null
+			continue
+		}
+
+		int clip = weapon.GetWeaponPrimaryClipCount()
+
+		if ( weapon != file.recoilWeapon )
+		{
+			// Weapon switch or pickup: new baseline, no shot.
+			file.recoilWeapon = weapon
+			file.recoilClip   = clip
+			continue
+		}
+
+		if ( clip < file.recoilClip && !player.IsTitan() ) // Titan weapons: no recoil for now
+			BH_PlayRecoil( weapon )
+
+		file.recoilClip = clip
+	}
+}
+
+void function BH_PlayRecoil( entity weapon )
+{
+	string side  = TF2VR_WeaponHand() == 0 ? "l" : "r"
+	string group = BH_RecoilGroup( weapon.GetWeaponClassName() )
+	BH_Play( "recoil_" + group + "_" + side )
+}
+
+// pistol  = one-handed pistols and SMGs
+// rifle   = two-handed rifles and LMGs
+// shotgun = shotguns, snipers and launchers (the heavy kick)
+string function BH_RecoilGroup( string weaponClass )
+{
+	switch ( weaponClass )
+	{
+		case "mp_weapon_semipistol":      // P2016
+		case "mp_weapon_autopistol":      // RE-45
+		case "mp_weapon_wingman":         // Wingman
+		case "mp_weapon_wingman_n":       // Wingman Elite
+		case "mp_weapon_smart_pistol":    // Smart Pistol
+		case "mp_weapon_gibber_pistol":
+		case "mp_weapon_alternator_smg":  // Alternator
+		case "mp_weapon_car":             // CAR
+		case "mp_weapon_r97":             // R-97
+		case "mp_weapon_hemlok_smg":      // Volt
+		case "sp_weapon_arc_tool":        // Arc Tool (campaign)
+			return "pistol"
+
+		case "mp_weapon_rspn101":         // R-201
+		case "mp_weapon_rspn101_og":      // R-101
+		case "mp_weapon_hemlok":          // Hemlok
+		case "mp_weapon_g2":              // G2A5
+		case "mp_weapon_vinson":          // Flatline
+		case "mp_weapon_lmg":             // Spitfire
+		case "mp_weapon_lstar":           // L-STAR
+		case "mp_weapon_esaw":            // Devotion
+			return "rifle"
+
+		case "mp_weapon_shotgun":         // EVA-8
+		case "mp_weapon_mastiff":         // Mastiff
+		case "mp_weapon_shotgun_pistol":  // Mozambique
+		case "mp_weapon_shotgun_doublebarrel":
+		case "mp_weapon_sniper":          // Kraber
+		case "mp_weapon_doubletake":      // Double Take
+		case "mp_weapon_dmr":             // Longbow DMR
+		case "mp_weapon_epg":             // EPG
+		case "mp_weapon_smr":             // Sidewinder
+		case "mp_weapon_softball":        // Softball
+		case "mp_weapon_pulse_lmg":       // Cold War
+		case "mp_weapon_rocket_launcher": // Archer
+		case "mp_weapon_arc_launcher":    // Thunderbolt
+		case "mp_weapon_mgl":             // MGL
+		case "mp_weapon_defender":        // Charge Rifle
+			return "shotgun"
+	}
+
+	// Fallback for anything not listed above.
+	if ( weaponClass.find( "shotgun" ) != null || weaponClass.find( "sniper" ) != null )
+		return "shotgun"
+	if ( weaponClass.find( "pistol" ) != null || weaponClass.find( "smg" ) != null )
+		return "pistol"
+
+	BH_Debug( "Recoil: unmapped weapon class " + weaponClass + ", using rifle" )
+	return "rifle"
 }
 
 #endif
