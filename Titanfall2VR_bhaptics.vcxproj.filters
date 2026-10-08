@@ -21,6 +21,9 @@
   <ItemGroup>
     <None Include="mod\Titanfall2VR_bhaptics\mod.json"><Filter>Mod</Filter></None>
     <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_client.nut"><Filter>Mod</Filter></None>
+    <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_server.nut"><Filter>Mod</Filter></None>
+    <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_probe_server.nut"><Filter>Mod</Filter></None>
+    <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_probe_client.nut"><Filter>Mod</Filter></None>
     <None Include="README.md" />
   </ItemGroup>
 </Project>

@@ -142,6 +142,18 @@ With `Level::Debug`, the log should show:
 4. `Health ... -> ...` lines while taking damage and regenerating, and a
    `Play '...'` line for each event.
 
+## Recoil probe (temporary)
+
+`tf2vr_bh_probe_server.nut` and `tf2vr_bh_probe_client.nut` test two things
+for gun recoil without help from the VR mod:
+
+- whether `AddCallback_OnWeaponAttack` fires in the campaign (server), and
+- what CircuitLord's `TF2VR_WeaponHand()` returns (client, signature guessed).
+
+Search the log for `[RECOIL-PROBE]`. If one of the two files causes a script
+compile error, remove its entry from `mod.json`; the rest of the mod is
+unaffected. Both files go away once recoil is implemented.
+
 ## Troubleshooting
 
 | Log line / symptom | Meaning |

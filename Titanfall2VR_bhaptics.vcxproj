@@ -166,6 +166,9 @@ echo Deployed to %PROFILE_DIR%</Command>
   <ItemGroup>
     <None Include="mod\Titanfall2VR_bhaptics\mod.json" />
     <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_client.nut" />
+    <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_server.nut" />
+    <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_probe_server.nut" />
+    <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_probe_client.nut" />
     <None Include="README.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
