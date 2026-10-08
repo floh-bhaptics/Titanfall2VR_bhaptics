@@ -26,7 +26,7 @@ namespace logging
     //  LOG LEVEL SETTING - messages below this level are dropped.
     //  Development: Level::Debug    Public release: Level::Info
     // =====================================================================
-    constexpr Level kMinLevel = Level::Debug;
+    constexpr Level kMinLevel = Level::Info;
 
     // northstarModule: the HMODULE Northstar passes to IPluginCallbacks::Init.
     // self:            this plugin's own HMODULE.
