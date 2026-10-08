@@ -60,16 +60,17 @@ void function TF2VR_BH_ClientInit()
 //  Helpers
 // ===================================================================
 
-// Angle of a damage source around the player, clockwise from the front
-// (0 = front, 90 = right, 180 = back, 270 = left), as bHaptics expects for
-// angleX. Source engine yaw grows counter-clockwise, hence view - source.
+// Angle of a damage source around the player, counter-clockwise from the
+// front (0 = front, 90 = left, 180 = back, 270 = right), as bHaptics expects
+// for angleX (verified in game). Source engine yaw also grows
+// counter-clockwise, hence source - view.
 float function BH_HitAngle( entity player, vector sourceOrigin )
 {
 	vector toSource = sourceOrigin - player.CameraPosition()
 	if ( toSource.x * toSource.x + toSource.y * toSource.y < 1.0 )
 		return 0.0 // no usable direction (e.g. falling): front
 
-	float angle = player.EyeAngles().y - VectorToAngles( toSource ).y
+	float angle = VectorToAngles( toSource ).y - player.EyeAngles().y
 	angle = angle % 360.0
 	if ( angle < 0.0 )
 		angle += 360.0
