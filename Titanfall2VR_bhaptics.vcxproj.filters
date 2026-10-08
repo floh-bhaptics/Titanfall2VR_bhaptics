@@ -23,5 +23,6 @@
     <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_client.nut"><Filter>Mod</Filter></None>
     <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_server.nut"><Filter>Mod</Filter></None>
     <None Include="README.md" />
+    <None Include="README_build.md" />
   </ItemGroup>
 </Project>

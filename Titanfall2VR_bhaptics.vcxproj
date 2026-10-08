@@ -68,8 +68,20 @@
       <AdditionalDependencies>$(ProjectDir)lib\BHapticsWrapper.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Message>Deploying to $(Tf2GameDir)\$(Tf2Profile)</Message>
-      <Command>if /I not "$(DeployToGame)"=="true" (
+      <Message>Packaging and deploying to $(Tf2GameDir)\$(Tf2Profile)</Message>
+      <Command>rem ---- Package: zip that users unpack into their TF2VR folder ----
+set "PKG_DIR=$(OutDir)package"
+set "PKG_ZIP=$(OutDir)Titanfall2VR_bhaptics.zip"
+if exist "%PKG_DIR%" rmdir /s /q "%PKG_DIR%"
+if exist "%PKG_ZIP%" del /q "%PKG_ZIP%"
+xcopy /Y /Q "$(TargetPath)" "%PKG_DIR%\plugins\" &gt;nul || (echo ERROR: packaging failed ^(plugin^) &amp; exit /b 1)
+xcopy /Y /Q "$(ProjectDir)lib\bhaptics\bhaptics_library.dll" "%PKG_DIR%\plugins\lib\" &gt;nul || (echo ERROR: packaging failed ^(bhaptics_library.dll^) &amp; exit /b 1)
+xcopy /Y /Q /E /I "$(ProjectDir)mod\Titanfall2VR_bhaptics" "%PKG_DIR%\mods\Titanfall2VR_bhaptics\" &gt;nul || (echo ERROR: packaging failed ^(mod folder^) &amp; exit /b 1)
+tar -a -c -f "%PKG_ZIP%" -C "%PKG_DIR%" plugins mods || (echo ERROR: could not create "%PKG_ZIP%" &amp; exit /b 1)
+echo Packaged "%PKG_ZIP%"
+
+rem ---- Deploy to the local game install ----
+if /I not "$(DeployToGame)"=="true" (
   echo Deployment disabled ^(DeployToGame=false^)
   exit /b 0
 )
@@ -122,8 +134,20 @@ echo Deployed to %PROFILE_DIR%</Command>
       <AdditionalDependencies>$(ProjectDir)lib\BHapticsWrapper.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Message>Deploying to $(Tf2GameDir)\$(Tf2Profile)</Message>
-      <Command>if /I not "$(DeployToGame)"=="true" (
+      <Message>Packaging and deploying to $(Tf2GameDir)\$(Tf2Profile)</Message>
+      <Command>rem ---- Package: zip that users unpack into their TF2VR folder ----
+set "PKG_DIR=$(OutDir)package"
+set "PKG_ZIP=$(OutDir)Titanfall2VR_bhaptics.zip"
+if exist "%PKG_DIR%" rmdir /s /q "%PKG_DIR%"
+if exist "%PKG_ZIP%" del /q "%PKG_ZIP%"
+xcopy /Y /Q "$(TargetPath)" "%PKG_DIR%\plugins\" &gt;nul || (echo ERROR: packaging failed ^(plugin^) &amp; exit /b 1)
+xcopy /Y /Q "$(ProjectDir)lib\bhaptics\bhaptics_library.dll" "%PKG_DIR%\plugins\lib\" &gt;nul || (echo ERROR: packaging failed ^(bhaptics_library.dll^) &amp; exit /b 1)
+xcopy /Y /Q /E /I "$(ProjectDir)mod\Titanfall2VR_bhaptics" "%PKG_DIR%\mods\Titanfall2VR_bhaptics\" &gt;nul || (echo ERROR: packaging failed ^(mod folder^) &amp; exit /b 1)
+tar -a -c -f "%PKG_ZIP%" -C "%PKG_DIR%" plugins mods || (echo ERROR: could not create "%PKG_ZIP%" &amp; exit /b 1)
+echo Packaged "%PKG_ZIP%"
+
+rem ---- Deploy to the local game install ----
+if /I not "$(DeployToGame)"=="true" (
   echo Deployment disabled ^(DeployToGame=false^)
   exit /b 0
 )
@@ -168,6 +192,7 @@ echo Deployed to %PROFILE_DIR%</Command>
     <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_client.nut" />
     <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_server.nut" />
     <None Include="README.md" />
+    <None Include="README_build.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
