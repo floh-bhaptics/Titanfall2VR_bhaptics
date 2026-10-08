@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>{1E7B7FFF-9DC8-4DB7-855B-0BE835CB5A6E}</ProjectGuid>
+    <RootNamespace>Titanfall2VR_bhaptics</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <!-- ===== Deployment settings: adjust here ===== -->
+  <PropertyGroup Label="UserMacros">
+    <!-- Titanfall 2 install folder -->
+    <Tf2GameDir>G:\SteamLibrary\steamapps\common\Titanfall2</Tf2GameDir>
+    <!-- Northstar profile used by the TF2VR installer's "Launch in VR" -->
+    <Tf2Profile>TF2VR</Tf2Profile>
+    <!-- Set to false to build without copying into the game -->
+    <DeployToGame>true</DeployToGame>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <OutDir>$(SolutionDir)bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)obj\$(Platform)\$(Configuration)\</IntDir>
+    <TargetName>Titanfall2VR_bhaptics</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <Optimization>Disabled</Optimization>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <PreprocessorDefinitions>TF2VR_BH_DEBUG;WIN32_LEAN_AND_MEAN;NOMINMAX;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)lib;$(ProjectDir)src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <!-- Static release CRT in BOTH configurations: BHapticsWrapper.lib is built with /MT
+           (RuntimeLibrary=MT_StaticRelease, _ITERATOR_DEBUG_LEVEL=0). Using /MTd here would
+           fail to link with LNK2038. Debug only differs by disabled optimization. -->
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(ProjectDir)lib\BHapticsWrapper.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Message>Deploying to $(Tf2GameDir)\$(Tf2Profile)</Message>
+      <Command>if /I not "$(DeployToGame)"=="true" (
+  echo Deployment disabled ^(DeployToGame=false^)
+  exit /b 0
+)
+set "PROFILE_DIR=$(Tf2GameDir)\$(Tf2Profile)"
+if not exist "%PROFILE_DIR%\Northstar.dll" (
+  echo ERROR: "%PROFILE_DIR%\Northstar.dll" not found. Install Titanfall 2 VR with CircuitLord's installer first, or fix Tf2GameDir/Tf2Profile in the project file.
+  exit /b 1
+)
+xcopy /Y /Q "$(TargetPath)" "%PROFILE_DIR%\plugins\"
+if errorlevel 1 (
+  echo ERROR: Could not copy the plugin. Is the game still running?
+  exit /b 1
+)
+xcopy /Y /Q "$(TargetDir)$(TargetName).pdb" "%PROFILE_DIR%\plugins\"
+xcopy /Y /Q /D "$(ProjectDir)lib\bhaptics\bhaptics_library.dll" "%PROFILE_DIR%\plugins\lib\"
+if errorlevel 1 (
+  echo ERROR: Could not copy bhaptics_library.dll
+  exit /b 1
+)
+xcopy /Y /Q /E /I "$(ProjectDir)mod\Titanfall2VR_bhaptics" "%PROFILE_DIR%\mods\Titanfall2VR_bhaptics\"
+if errorlevel 1 (
+  echo ERROR: Could not copy the mod folder
+  exit /b 1
+)
+echo Deployed to %PROFILE_DIR%</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <PreprocessorDefinitions>NDEBUG;WIN32_LEAN_AND_MEAN;NOMINMAX;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)lib;$(ProjectDir)src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <!-- Static release CRT in BOTH configurations: BHapticsWrapper.lib is built with /MT
+           (RuntimeLibrary=MT_StaticRelease, _ITERATOR_DEBUG_LEVEL=0). Using /MTd here would
+           fail to link with LNK2038. Debug only differs by disabled optimization. -->
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalDependencies>$(ProjectDir)lib\BHapticsWrapper.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Message>Deploying to $(Tf2GameDir)\$(Tf2Profile)</Message>
+      <Command>if /I not "$(DeployToGame)"=="true" (
+  echo Deployment disabled ^(DeployToGame=false^)
+  exit /b 0
+)
+set "PROFILE_DIR=$(Tf2GameDir)\$(Tf2Profile)"
+if not exist "%PROFILE_DIR%\Northstar.dll" (
+  echo ERROR: "%PROFILE_DIR%\Northstar.dll" not found. Install Titanfall 2 VR with CircuitLord's installer first, or fix Tf2GameDir/Tf2Profile in the project file.
+  exit /b 1
+)
+xcopy /Y /Q "$(TargetPath)" "%PROFILE_DIR%\plugins\"
+if errorlevel 1 (
+  echo ERROR: Could not copy the plugin. Is the game still running?
+  exit /b 1
+)
+xcopy /Y /Q "$(TargetDir)$(TargetName).pdb" "%PROFILE_DIR%\plugins\"
+xcopy /Y /Q /D "$(ProjectDir)lib\bhaptics\bhaptics_library.dll" "%PROFILE_DIR%\plugins\lib\"
+if errorlevel 1 (
+  echo ERROR: Could not copy bhaptics_library.dll
+  exit /b 1
+)
+xcopy /Y /Q /E /I "$(ProjectDir)mod\Titanfall2VR_bhaptics" "%PROFILE_DIR%\mods\Titanfall2VR_bhaptics\"
+if errorlevel 1 (
+  echo ERROR: Could not copy the mod folder
+  exit /b 1
+)
+echo Deployed to %PROFILE_DIR%</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="src\northstar.h" />
+    <ClInclude Include="src\log.h" />
+    <ClInclude Include="src\haptics.h" />
+    <ClInclude Include="lib\bhaptics_wrapper.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\plugin.cpp" />
+    <ClCompile Include="src\log.cpp" />
+    <ClCompile Include="src\haptics.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="mod\Titanfall2VR_bhaptics\mod.json" />
+    <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_client.nut" />
+    <None Include="README.md" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>
