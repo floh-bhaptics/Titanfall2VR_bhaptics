@@ -1,13 +1,11 @@
-untyped
 // Server-side bHaptics hooks for Titanfall 2 VR (campaign).
 //
 // In the campaign the server runs inside the game process, so the BH_*
 // natives are available here as well and play directly.
 //
-// None of these hooks are verified for the campaign yet (they come from
-// Northstar's multiplayer server scripts), so all of them are looked up by
-// name at runtime. A missing one shows a warning in the plugin log and is
-// skipped, instead of breaking the level load with a compile error.
+// These hooks come from Northstar's multiplayer server scripts. If one of
+// them doesn't exist in the campaign, the game reports a SERVER script
+// COMPILE ERROR naming it, and that hook has to be removed or replaced.
 
 global function TF2VR_BH_ServerInit
 
@@ -30,19 +28,17 @@ void function TF2VR_BH_ServerInit()
 #if TF2VR_BHAPTICS
 	BH_Debug( "server script init" )
 
-	BH_Hook( "AddCallback_OnPlayerKilled",           BH_OnPlayerKilled )
-	BH_Hook( "AddCallback_ZiplineStart",             BH_OnZiplineStart )
-	BH_Hook( "AddCallback_ZiplineStop",              BH_OnZiplineStop )
-	BH_Hook( "AddCallback_OnTitanBecomesPilot",      BH_OnTitanBecomesPilot )
-	BH_Hook( "AddCallback_OnTitanHealthSegmentLost", BH_OnTitanHealthSegmentLost )
-	BH_Hook( "AddSoulDeathCallback",                 BH_OnSoulDeath )
+	AddCallback_OnPlayerKilled( BH_OnPlayerKilled )
+	AddCallback_ZiplineStart( BH_OnZiplineStart )
+	AddCallback_ZiplineStop( BH_OnZiplineStop )
+	AddCallback_OnTitanBecomesPilot( BH_OnTitanBecomesPilot )
+	AddCallback_OnTitanHealthSegmentLost( BH_OnTitanHealthSegmentLost )
+	AddSoulDeathCallback( BH_OnSoulDeath )
 
 	// Per-player hooks (shield, movement) need the player entity:
 	// register them when it spawns. Both sources are deduplicated.
-	var addSpawn = BH_FindFunction( "AddSpawnCallback" )
-	if ( addSpawn != null )
-		addSpawn( "player", BH_OnPlayerEntitySpawned )
-	BH_Hook( "AddCallback_OnPlayerRespawned", BH_OnPlayerEntitySpawned )
+	AddSpawnCallback( "player", BH_OnPlayerEntitySpawned )
+	AddCallback_OnPlayerRespawned( BH_OnPlayerEntitySpawned )
 #endif
 }
 
@@ -51,41 +47,6 @@ void function TF2VR_BH_ServerInit()
 // ===================================================================
 //  Helpers
 // ===================================================================
-
-var function BH_FindFunction( string name )
-{
-	if ( name in getroottable() )
-		return getroottable()[ name ]
-
-	BH_Warn( "Hook not available in this game, skipped: " + name )
-	return null
-}
-
-void function BH_Hook( string registerFunctionName, var callback )
-{
-	var registerFunction = BH_FindFunction( registerFunctionName )
-	if ( registerFunction != null )
-		registerFunction( callback )
-}
-
-// Value of an enum member, or -1 if the enum/member doesn't exist here.
-int function BH_EnumValue( string enumName, string memberName )
-{
-	table consts = getconsttable()
-	if ( !( enumName in consts ) )
-	{
-		BH_Warn( "Enum not available in this game: " + enumName )
-		return -1
-	}
-
-	var members = consts[ enumName ]
-	if ( !( memberName in members ) )
-	{
-		BH_Warn( "Enum member not available: " + enumName + "." + memberName )
-		return -1
-	}
-	return expect int( members[ memberName ] )
-}
 
 bool function BH_IsOurPlayer( entity ent )
 {
@@ -103,28 +64,15 @@ void function BH_OnPlayerEntitySpawned( entity player )
 	file.hookedPlayers.append( player )
 	BH_Debug( "Registering per-player hooks" )
 
-	var addShield = BH_FindFunction( "AddEntityCallback_OnPostShieldDamage" )
-	if ( addShield != null )
-		addShield( player, BH_OnPostShieldDamage )
+	AddEntityCallback_OnPostShieldDamage( player, BH_OnPostShieldDamage )
 
-	var addMovement = BH_FindFunction( "AddPlayerMovementEventCallback" )
-	if ( addMovement != null )
-	{
-		BH_AddMovement( addMovement, player, "JUMP",          BH_OnJump )
-		BH_AddMovement( addMovement, player, "DOUBLE_JUMP",   BH_OnJump )
-		BH_AddMovement( addMovement, player, "DODGE",         BH_OnDodge )
-		BH_AddMovement( addMovement, player, "TOUCH_GROUND",  BH_OnLand )
-		BH_AddMovement( addMovement, player, "MANTLE",        BH_OnMantle )
-		BH_AddMovement( addMovement, player, "BEGIN_WALLRUN", BH_OnBeginWallrun )
-		BH_AddMovement( addMovement, player, "END_WALLRUN",   BH_OnEndWallrun )
-	}
-}
-
-void function BH_AddMovement( var addMovement, entity player, string eventName, var callback )
-{
-	int eventId = BH_EnumValue( "ePlayerMovementEvents", eventName )
-	if ( eventId >= 0 )
-		addMovement( player, eventId, callback )
+	AddPlayerMovementEventCallback( player, ePlayerMovementEvents.JUMP,          BH_OnJump )
+	AddPlayerMovementEventCallback( player, ePlayerMovementEvents.DOUBLE_JUMP,   BH_OnJump )
+	AddPlayerMovementEventCallback( player, ePlayerMovementEvents.DODGE,         BH_OnDodge )
+	AddPlayerMovementEventCallback( player, ePlayerMovementEvents.TOUCH_GROUND,  BH_OnLand )
+	AddPlayerMovementEventCallback( player, ePlayerMovementEvents.MANTLE,        BH_OnMantle )
+	AddPlayerMovementEventCallback( player, ePlayerMovementEvents.BEGIN_WALLRUN, BH_OnBeginWallrun )
+	AddPlayerMovementEventCallback( player, ePlayerMovementEvents.END_WALLRUN,   BH_OnEndWallrun )
 }
 
 // ===================================================================

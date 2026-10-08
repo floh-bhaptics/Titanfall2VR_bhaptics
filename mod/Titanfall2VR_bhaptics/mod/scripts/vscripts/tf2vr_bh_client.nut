@@ -1,13 +1,11 @@
-untyped
 // Client-side bHaptics hooks for Titanfall 2 VR (campaign).
 //
 // TF2VR_BHAPTICS is a compile-time constant from mod.json "PluginDependencies":
 // true if Titanfall2VR_bhaptics.dll is loaded. The BH_* natives only exist
 // then, so everything that uses them sits inside #if TF2VR_BHAPTICS.
 //
-// Hooks that are not verified for the campaign are looked up by name at
-// runtime (BH_FindFunction). If one is missing, the plugin log shows a
-// warning and that hook is skipped, instead of a script compile error.
+// If a hook doesn't exist in the campaign, the game reports a CLIENT script
+// COMPILE ERROR naming it, and that hook has to be removed or replaced.
 //
 // Event names are lower-cased by the plugin before they reach bHaptics.
 
@@ -39,21 +37,13 @@ void function TF2VR_BH_ClientInit()
 #if TF2VR_BHAPTICS
 	BH_Debug( "client script init" )
 
-	// --- Verified in the campaign (used by CircuitLord's scripts) ---
 	AddCreateTitanCockpitCallback( BH_OnTitanCockpitCreated )
 	AddServerToClientStringCommandCallback( "BH_PlayerKilled", BH_OnPlayerKilledCommand )
+	AddCallback_LocalClientPlayerSpawned( BH_OnLocalPlayerSpawned )
 
-	// --- Looked up at runtime ---
-	var addTookDamage = BH_FindFunction( "AddLocalPlayerTookDamageCallback" )
-	if ( addTookDamage != null )
-	{
-		for ( int id = BH_DAMAGE_SOURCE_MIN; id <= BH_DAMAGE_SOURCE_MAX; id++ )
-			addTookDamage( id, BH_OnLocalPlayerTookDamage )
-	}
-
-	var addSpawned = BH_FindFunction( "AddCallback_LocalClientPlayerSpawned" )
-	if ( addSpawned != null )
-		addSpawned( BH_OnLocalPlayerSpawned )
+	// Damage callbacks are registered per damage source id.
+	for ( int id = BH_DAMAGE_SOURCE_MIN; id <= BH_DAMAGE_SOURCE_MAX; id++ )
+		AddLocalPlayerTookDamageCallback( id, BH_OnLocalPlayerTookDamage )
 
 	thread BH_HealthWatchThread()
 #else
@@ -66,15 +56,6 @@ void function TF2VR_BH_ClientInit()
 // ===================================================================
 //  Helpers
 // ===================================================================
-
-var function BH_FindFunction( string name )
-{
-	if ( name in getroottable() )
-		return getroottable()[ name ]
-
-	BH_Warn( "Hook not available in this game, skipped: " + name )
-	return null
-}
 
 // Angle of a damage source around the player, clockwise from the front
 // (0 = front, 90 = right, 180 = back, 270 = left), as bHaptics expects for

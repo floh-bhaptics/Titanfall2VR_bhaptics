@@ -109,6 +109,10 @@ All names are lower case, as they must be in the bHaptics portal.
 Tuning constants (loop intervals, low-health threshold) are at the top of the
 two `.nut` files.
 
+Note: the game's Squirrel compiler refuses to pass typed callbacks through
+`var` parameters, so hooks can't be looked up by name at runtime. They are
+called directly.
+
 ## Script API (natives from the plugin)
 
 Available in CLIENT and SERVER scripts when the plugin is loaded
@@ -131,10 +135,10 @@ With `Level::Debug`, the log should show:
 
 1. `Registered 5 BH_* natives in SERVER VM` and `... in CLIENT VM` on level load.
 2. `[SERVER script] server script init` and `[CLIENT script] client script init`.
-3. Any `Hook not available in this game, skipped: ...` warnings. Those hooks
-   don't exist in the campaign scripts and need another approach. If every
-   looked-up hook warns but the Titan embark event works, the runtime lookup
-   itself is the problem, not the hooks.
+3. No `COMPILE ERROR` lines. The hooks come from Northstar's multiplayer
+   scripts; if one doesn't exist in the campaign, the game names it in a
+   SERVER or CLIENT script compile error and returns to the main menu.
+   That hook then has to be removed or replaced.
 4. `Health ... -> ...` lines while taking damage and regenerating, and a
    `Play '...'` line for each event.
 
