@@ -16,6 +16,7 @@
     <RootNamespace>Titanfall2VR_bhaptics</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
+
   <!-- ===== Deployment settings: adjust here ===== -->
   <PropertyGroup Label="UserMacros">
     <!-- Titanfall 2 install folder -->
@@ -25,17 +26,18 @@
     <!-- Set to false to build without copying into the game -->
     <DeployToGame>true</DeployToGame>
   </PropertyGroup>
+
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v145</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v145</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -81,7 +83,6 @@ if errorlevel 1 (
   echo ERROR: Could not copy the plugin. Is the game still running?
   exit /b 1
 )
-xcopy /Y /Q "$(TargetDir)$(TargetName).pdb" "%PROFILE_DIR%\plugins\"
 xcopy /Y /Q /D "$(ProjectDir)lib\bhaptics\bhaptics_library.dll" "%PROFILE_DIR%\plugins\lib\"
 if errorlevel 1 (
   echo ERROR: Could not copy bhaptics_library.dll
@@ -136,7 +137,6 @@ if errorlevel 1 (
   echo ERROR: Could not copy the plugin. Is the game still running?
   exit /b 1
 )
-xcopy /Y /Q "$(TargetDir)$(TargetName).pdb" "%PROFILE_DIR%\plugins\"
 xcopy /Y /Q /D "$(ProjectDir)lib\bhaptics\bhaptics_library.dll" "%PROFILE_DIR%\plugins\lib\"
 if errorlevel 1 (
   echo ERROR: Could not copy bhaptics_library.dll

@@ -20,7 +20,6 @@ G:\SteamLibrary\steamapps\common\Titanfall2\
    ├─ plugins\                         every *.dll here is loaded as a plugin
    │  ├─ Titanfall2VR.dll              (installer, the VR mod itself)
    │  ├─ Titanfall2VR_bhaptics.dll     ← this project
-   │  ├─ Titanfall2VR_bhaptics.pdb     ← symbols, for crash dumps
    │  └─ lib\                          dependency folder, NOT loaded as plugins
    │     └─ bhaptics_library.dll       ← bHaptics SDK
    ├─ mods\                            Northstar mods (scripts, assets)
