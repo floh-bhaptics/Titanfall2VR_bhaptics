@@ -156,6 +156,19 @@ namespace haptics
         g_state = State::Ready;
     }
 
+    bool IsConnected()
+    {
+        return g_state != State::Off && bh::IsConnected();
+    }
+
+    void StopAll()
+    {
+        if (g_state == State::Off)
+            return;
+        bh::StopAll();
+        logging::Debug("Stopped all haptics");
+    }
+
     void Shutdown()
     {
         if (g_state == State::Off)

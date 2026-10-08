@@ -9,12 +9,14 @@
     <ClInclude Include="src\northstar.h"><Filter>Source</Filter></ClInclude>
     <ClInclude Include="src\log.h"><Filter>Source</Filter></ClInclude>
     <ClInclude Include="src\haptics.h"><Filter>Source</Filter></ClInclude>
+    <ClInclude Include="src\squirrel.h"><Filter>Source</Filter></ClInclude>
     <ClInclude Include="lib\bhaptics_wrapper.h"><Filter>Library</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\plugin.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\log.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\haptics.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\squirrel.cpp"><Filter>Source</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="mod\Titanfall2VR_bhaptics\mod.json"><Filter>Mod</Filter></None>

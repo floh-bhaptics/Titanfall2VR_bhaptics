@@ -9,13 +9,14 @@
 #include "northstar.h"
 #include "log.h"
 #include "haptics.h"
+#include "squirrel.h"
 
 #include <cstring>
 
 namespace
 {
     constexpr const char* kPluginName     = "Titanfall2VR_bhaptics";
-    constexpr const char* kPluginVersion  = "0.1.0";
+    constexpr const char* kPluginVersion  = "0.2.0";
     constexpr const char* kLogName        = "BHAPTICS";
     // Squirrel constant for mod.json "PluginDependencies". Must be a valid
     // Squirrel identifier, otherwise Northstar refuses to load the plugin.
@@ -73,9 +74,15 @@ namespace
             return true;
         }
 
-        // Next step: register BH_* natives for the client VM here.
-        void OnSqvmCreated(ns::CSquirrelVM*) override {}
-        void OnSqvmDestroying(ns::CSquirrelVM*) override {}
+        void OnSqvmCreated(ns::CSquirrelVM* vm) override
+        {
+            squirrel::OnVmCreated(vm);
+        }
+
+        void OnSqvmDestroying(ns::CSquirrelVM* vm) override
+        {
+            squirrel::OnVmDestroying(vm);
+        }
 
         void OnLibraryLoaded(HMODULE, const char*) override {}
 

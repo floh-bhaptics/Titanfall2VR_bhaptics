@@ -1,7 +1,7 @@
 {
 	"Name": "Titanfall2VR_bhaptics",
 	"Description": "bHaptics support for Titanfall 2 VR",
-	"Version": "0.1.0",
+	"Version": "0.2.0",
 	"LoadPriority": 3,
 	"RequiredOnClient": false,
 
@@ -12,6 +12,11 @@
 			"Path": "tf2vr_bh_client.nut",
 			"RunOn": "CLIENT && SP",
 			"ClientCallback": { "After": "TF2VR_BH_ClientInit" }
+		},
+		{
+			"Path": "tf2vr_bh_server.nut",
+			"RunOn": "SERVER && SP",
+			"ServerCallback": { "After": "TF2VR_BH_ServerInit" }
 		}
 	]
 }

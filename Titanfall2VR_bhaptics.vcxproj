@@ -154,12 +154,14 @@ echo Deployed to %PROFILE_DIR%</Command>
     <ClInclude Include="src\northstar.h" />
     <ClInclude Include="src\log.h" />
     <ClInclude Include="src\haptics.h" />
+    <ClInclude Include="src\squirrel.h" />
     <ClInclude Include="lib\bhaptics_wrapper.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\plugin.cpp" />
     <ClCompile Include="src\log.cpp" />
     <ClCompile Include="src\haptics.cpp" />
+    <ClCompile Include="src\squirrel.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="mod\Titanfall2VR_bhaptics\mod.json" />

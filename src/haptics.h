@@ -22,6 +22,12 @@ namespace haptics
     // Stops all haptics and closes the Player connection.
     void Shutdown();
 
+    // True if the bHaptics Player is connected.
+    bool IsConnected();
+
+    // Stops everything currently playing (e.g. on level unload).
+    void StopAll();
+
     // Plays a workspace event. The name is lower-cased before it goes to the
     // SDK (bHaptics event names are all lower case), so CamelCase like
     // "RecoilVest_R" can be used in code. Returns the request id (0 = not played).

@@ -3,8 +3,9 @@
 bHaptics support for CircuitLord's Titanfall 2 VR mod, built as a Northstar
 plugin (native DLL) plus a small Northstar mod (Squirrel scripts).
 
-Current state (v0.1.0): the plugin loads with the game, connects to the
-bHaptics Player and plays one heartbeat on startup.
+Current state (v0.2.0): the plugin connects to the bHaptics Player, plays a
+heartbeat on startup, and gives the game scripts `BH_*` functions. The mod's
+scripts use them for damage, health, death, movement and Titan events.
 
 ## Where everything goes
 
@@ -26,7 +27,9 @@ G:\SteamLibrary\steamapps\common\Titanfall2\
    │  ├─ Titanfall2VR.Cockpit\         (installer)
    │  └─ Titanfall2VR_bhaptics\        ← this project's mod
    │     ├─ mod.json
-   │     └─ mod\scripts\vscripts\tf2vr_bh_client.nut
+   │     └─ mod\scripts\vscripts\
+   │        ├─ tf2vr_bh_client.nut     client hooks (damage, health, spawn, embark)
+   │        └─ tf2vr_bh_server.nut     server hooks (death, shield, movement, Titan)
    └─ logs\nslog<date>.txt             Northstar log, our lines start with [BHAPTICS]
 ```
 
@@ -53,7 +56,7 @@ only tracks and updates its own files, so ours survive mod updates.
 5. Check `TF2VR\logs\nslog<newest>.txt` for lines like:
 
 ```
-[BHAPTICS] Titanfall2VR_bhaptics v0.1.0 loaded
+[BHAPTICS] Titanfall2VR_bhaptics v0.2.0 loaded
 [BHAPTICS] [DEBUG] Loading bHaptics library from G:\...\TF2VR\plugins\lib\bhaptics_library.dll
 [BHAPTICS] [DEBUG] bHaptics library loaded, waiting for bHaptics Player...
 [BHAPTICS] Connected to bHaptics Player after 312 ms
@@ -80,6 +83,61 @@ All playback goes through `haptics::PlaybackHaptics()`, which lower-cases the
 event name before sending it to the SDK (bHaptics event names are all lower
 case). So code can use readable CamelCase like `HeartBeat` or `RecoilVest_R`.
 
+## bHaptics events
+
+All names are lower case, as they must be in the bHaptics portal.
+
+| Event | Trigger | Script side |
+|---|---|---|
+| `heartbeat` | Plugin startup; loop every 1 s while pilot health < 25 % | plugin / client |
+| `impact` | Taking damage, rotated towards the damage source (`angleX`) | client |
+| `healing` | Start of a health regeneration phase (max. once per second) | client |
+| `shield_damage` | Shield damage on the player (Titan shield) | server |
+| `player_killed` | Player died (also stops heartbeat and zipline loops) | server |
+| `player_spawned` | Player spawned (level load, checkpoint, restart) | client |
+| `player_jump` | Jump and double jump | server |
+| `player_dodge` | Dodge (also Titan dash) | server |
+| `player_land` | Touching the ground | server |
+| `player_mantle` | Mantling | server |
+| `begin_wallrun` / `end_wallrun` | Wallrun start / end | server |
+| `zipline` | Loop every 200 ms while on a zipline | server |
+| `player_enter_titan` | Titan cockpit created (embark) | client |
+| `player_exit_titan` | Leaving the Titan | server |
+| `titan_hit` | Embarked Titan loses a health segment | server |
+| `titan_destroyed` | Our Titan (embarked or BT as auto-titan) is destroyed | server |
+
+Tuning constants (loop intervals, low-health threshold) are at the top of the
+two `.nut` files.
+
+## Script API (natives from the plugin)
+
+Available in CLIENT and SERVER scripts when the plugin is loaded
+(wrap usage in `#if TF2VR_BHAPTICS`):
+
+```squirrel
+void BH_Play( string eventName )
+void BH_PlayParam( string eventName, float intensity, float duration, float angleX, float offsetY )
+bool BH_IsConnected()
+void BH_Debug( string message )   // plugin log, only with Level::Debug
+void BH_Warn( string message )
+```
+
+The natives are registered through the game's own Squirrel registration
+function (offsets from NorthstarLauncher, see `src/squirrel.cpp`).
+
+## First test checklist
+
+With `Level::Debug`, the log should show:
+
+1. `Registered 5 BH_* natives in SERVER VM` and `... in CLIENT VM` on level load.
+2. `[SERVER script] server script init` and `[CLIENT script] client script init`.
+3. Any `Hook not available in this game, skipped: ...` warnings. Those hooks
+   don't exist in the campaign scripts and need another approach. If every
+   looked-up hook warns but the Titan embark event works, the runtime lookup
+   itself is the problem, not the hooks.
+4. `Health ... -> ...` lines while taking damage and regenerating, and a
+   `Play '...'` line for each event.
+
 ## Troubleshooting
 
 | Log line / symptom | Meaning |
@@ -101,6 +159,7 @@ src\
   plugin.cpp     Northstar entry point: CreateInterface, PluginId, callbacks
   northstar.h    minimal mirror of the Northstar plugin ABI
   haptics.cpp    bHaptics connection lifecycle, PlaybackHaptics(), startup heartbeat
+  squirrel.cpp   BH_* natives, registered in the CLIENT and SERVER script VMs
   log.cpp        logging into the Northstar console/log
 lib\
   BHapticsWrapper.lib, bhaptics_wrapper.h
@@ -110,5 +169,4 @@ mod\Titanfall2VR_bhaptics\   Northstar mod, copied to TF2VR\mods\
 
 ## Next steps
 
-- Register `BH_*` Squirrel natives in `OnSqvmCreated` (client VM).
-- Wire up CircuitLord's gun-fired callback and damage events in `tf2vr_bh_client.nut`.
+- Recoil: wire up CircuitLord's gun-fired callback (with hand) once available.
