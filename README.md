@@ -54,14 +54,27 @@ only tracks and updates its own files, so ours survive mod updates.
 
 ```
 [BHAPTICS] Titanfall2VR_bhaptics v0.1.0 loaded
-[BHAPTICS] Loading bHaptics library from G:\...\TF2VR\plugins\lib\bhaptics_library.dll
-[BHAPTICS] bHaptics library loaded, waiting for bHaptics Player...
+[BHAPTICS] [DEBUG] Loading bHaptics library from G:\...\TF2VR\plugins\lib\bhaptics_library.dll
+[BHAPTICS] [DEBUG] bHaptics library loaded, waiting for bHaptics Player...
 [BHAPTICS] Connected to bHaptics Player after 312 ms
-[BHAPTICS] Devices: Vest=1 ArmL=0 ArmR=0 Head=0 HandL=0 HandR=0
-[BHAPTICS] Startup heartbeat played (request 1)
+[BHAPTICS] [DEBUG] Devices: Vest=1 ArmL=0 ArmR=0 Head=0 HandL=0 HandR=0
+[BHAPTICS] [DEBUG] Play 'heartbeat' (intensity 1.00, duration 1.00, angle 0, offsetY 0.00) -> request 1
 ...
 [Titanfall2VR_bhaptics] client script loaded, native plugin present
 ```
+
+### Log level
+
+Set in `src/log.h`:
+
+```cpp
+constexpr Level kMinLevel = Level::Debug;   // development
+constexpr Level kMinLevel = Level::Info;    // public release
+```
+
+`Debug` logs every played event with its parameters, so a misspelled event
+name in the bHaptics portal shows up as a `Play '...'` line without a felt
+effect. `Info` keeps only "loaded" and "connected", plus warnings and errors.
 
 All playback goes through `haptics::PlaybackHaptics()`, which lower-cases the
 event name before sending it to the SDK (bHaptics event names are all lower
@@ -74,7 +87,7 @@ case). So code can use readable CamelCase like `HeartBeat` or `RecoilVest_R`.
 | No `[BHAPTICS]` lines at all | Plugin not loaded: check `TF2VR\plugins\`, and that the game was started via the TF2VR launcher, not plain Steam |
 | `bHaptics disabled: could not load bhaptics_library.dll (Win32 error 126)` | DLL missing in `plugins\lib\`, or the Visual C++ 2015-2022 x64 runtime is not installed |
 | `bHaptics Player still not reachable` | Player not running; the plugin keeps trying and connects when it starts |
-| Heartbeat logged with request id but nothing felt | Event `heartbeat` missing in the workspace, or the vest isn't connected (see the `Devices:` line) |
+| `Play '...'` logged but nothing felt | Event name missing or misspelled in the workspace, or the device isn't connected (see the `Devices:` line) |
 | `client script loaded, native plugin NOT loaded` | Mod loaded but plugin missing or failed: check the lines above it |
 
 Do not use the `reload_plugins` console command: it reloads all plugins,

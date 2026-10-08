@@ -9,19 +9,32 @@ namespace
     ns::ISys* g_sys  = nullptr;
     HMODULE   g_self = nullptr;
 
-    void Write(ns::LogLevel level, const char* fmt, va_list args)
+    void Write(logging::Level level, const char* fmt, va_list args)
     {
+        if (!logging::Enabled(level))
+            return;
+
+        // Northstar has no debug level, so debug lines go out as INFO with a tag.
         char buf[2048];
-        std::vsnprintf(buf, sizeof(buf), fmt, args);
+        int offset = 0;
+        if (level == logging::Level::Debug)
+            offset = std::snprintf(buf, sizeof(buf), "[DEBUG] ");
+        std::vsnprintf(buf + offset, sizeof(buf) - offset, fmt, args);
 
         if (g_sys)
         {
-            g_sys->Log(reinterpret_cast<int64_t>(g_self), level, buf);
+            ns::LogLevel nsLevel = ns::LogLevel::INFO;
+            if (level == logging::Level::Warn)
+                nsLevel = ns::LogLevel::WARN;
+            else if (level == logging::Level::Error)
+                nsLevel = ns::LogLevel::ERR;
+
+            g_sys->Log(reinterpret_cast<int64_t>(g_self), nsLevel, buf);
             return;
         }
 
         // Fallback before Northstar's logger is available.
-        static const char* const prefix[] = { "[Titanfall2VR_bhaptics] ", "[Titanfall2VR_bhaptics] WARN: ", "[Titanfall2VR_bhaptics] ERROR: " };
+        static const char* const prefix[] = { "[Titanfall2VR_bhaptics] ", "[Titanfall2VR_bhaptics] ", "[Titanfall2VR_bhaptics] WARN: ", "[Titanfall2VR_bhaptics] ERROR: " };
         OutputDebugStringA(prefix[static_cast<int>(level)]);
         OutputDebugStringA(buf);
         OutputDebugStringA("\n");
@@ -48,27 +61,21 @@ namespace logging
             g_sys = sys;
     }
 
-    void Info(const char* fmt, ...)
-    {
-        va_list args;
-        va_start(args, fmt);
-        Write(ns::LogLevel::INFO, fmt, args);
-        va_end(args);
+#define TF2VR_BH_LOG_FN(Name, Lvl)            \
+    void Name(const char* fmt, ...)           \
+    {                                         \
+        if (!Enabled(Lvl))                    \
+            return;                           \
+        va_list args;                         \
+        va_start(args, fmt);                  \
+        Write(Lvl, fmt, args);                \
+        va_end(args);                         \
     }
 
-    void Warn(const char* fmt, ...)
-    {
-        va_list args;
-        va_start(args, fmt);
-        Write(ns::LogLevel::WARN, fmt, args);
-        va_end(args);
-    }
+    TF2VR_BH_LOG_FN(Debug, Level::Debug)
+    TF2VR_BH_LOG_FN(Info,  Level::Info)
+    TF2VR_BH_LOG_FN(Warn,  Level::Warn)
+    TF2VR_BH_LOG_FN(Error, Level::Error)
 
-    void Error(const char* fmt, ...)
-    {
-        va_list args;
-        va_start(args, fmt);
-        Write(ns::LogLevel::ERR, fmt, args);
-        va_end(args);
-    }
+#undef TF2VR_BH_LOG_FN
 }

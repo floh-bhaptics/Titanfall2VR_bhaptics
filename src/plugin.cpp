@@ -69,7 +69,7 @@ namespace
         bool Unload() override
         {
             haptics::Shutdown();
-            logging::Info("%s unloading", kPluginName);
+            logging::Debug("%s unloading", kPluginName);
             return true;
         }
 

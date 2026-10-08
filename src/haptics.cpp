@@ -59,7 +59,7 @@ namespace
 
     void LogDevices()
     {
-        logging::Info("Devices: Vest=%d ArmL=%d ArmR=%d Head=%d HandL=%d HandR=%d",
+        logging::Debug("Devices: Vest=%d ArmL=%d ArmR=%d Head=%d HandL=%d HandR=%d",
                       bh::IsDeviceConnected(bh::Position::Vest),
                       bh::IsDeviceConnected(bh::Position::ForearmL),
                       bh::IsDeviceConnected(bh::Position::ForearmR),
@@ -81,7 +81,11 @@ namespace haptics
         for (char& c : key)
             c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
-        return bh::PlayParam(key.c_str(), intensity, duration, angleX, offsetY);
+        const int requestId = bh::PlayParam(key.c_str(), intensity, duration, angleX, offsetY);
+
+        logging::Debug("Play '%s' (intensity %.2f, duration %.2f, angle %.0f, offsetY %.2f) -> request %d",
+                       key.c_str(), intensity, duration, angleX, offsetY, requestId);
+        return requestId;
     }
 
     void Startup(HMODULE self)
@@ -94,22 +98,22 @@ namespace haptics
         // Fallback: next to this plugin DLL.
         const std::wstring libPath = ModuleDirectory(self) + L"lib\\bhaptics_library.dll";
         const bool inLibDir = FileExists(libPath);
-        logging::Info("Loading bHaptics library from %s", inLibDir ? ToUtf8(libPath).c_str() : "plugin folder (plugins\\lib\\ not found)");
+        logging::Debug("Loading bHaptics library from %s", inLibDir ? ToUtf8(libPath).c_str() : "plugin folder (plugins\\lib\\ not found)");
 
         const bh::InitStatus status = bh::Initialize(kWorkspaceId, kApiKey, "", inLibDir ? libPath.c_str() : nullptr);
 
         switch (status)
         {
             case bh::InitStatus::Ok:
-                logging::Info("Registered with bHaptics Player");
+                logging::Debug("Registered with bHaptics Player");
                 g_state = State::WaitingForPlayer;
                 break;
             case bh::InitStatus::AlreadyInitialized:
-                logging::Info("bHaptics already initialized (plugin reload)");
+                logging::Debug("bHaptics already initialized (plugin reload)");
                 g_state = State::WaitingForPlayer;
                 break;
             case bh::InitStatus::NotConnected:
-                logging::Info("bHaptics library loaded, waiting for bHaptics Player...");
+                logging::Debug("bHaptics library loaded, waiting for bHaptics Player...");
                 g_state = State::WaitingForPlayer;
                 break;
             case bh::InitStatus::DllNotFound:
@@ -148,8 +152,7 @@ namespace haptics
         if (now < g_heartbeatTick)
             return;
 
-        const int requestId = PlaybackHaptics("HeartBeat");
-        logging::Info("Startup heartbeat played (request %d)", requestId);
+        PlaybackHaptics("HeartBeat");
         g_state = State::Ready;
     }
 
@@ -159,6 +162,6 @@ namespace haptics
             return;
         bh::Shutdown();
         g_state = State::Off;
-        logging::Info("bHaptics connection closed");
+        logging::Debug("bHaptics connection closed");
     }
 }
