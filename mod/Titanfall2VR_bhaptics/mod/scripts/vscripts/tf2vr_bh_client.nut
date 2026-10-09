@@ -10,6 +10,9 @@
 // Event names are lower-cased by the plugin before they reach bHaptics.
 
 global function TF2VR_BH_ClientInit
+#if TF2VR_BHAPTICS
+global function BH_TrackProjectile // called from tf2vr_bh_missiles_client.nut
+#endif
 
 #if TF2VR_BHAPTICS
 
@@ -19,11 +22,23 @@ const float BH_HEARTBEAT_INTERVAL  = 1.0   // seconds between heartbeat starts
 const float BH_HEALING_COOLDOWN    = 1.0   // min. seconds between two "healing" events
 const int   BH_DAMAGE_SOURCE_MIN   = -1    // eDamageSourceId range to listen to
 const int   BH_DAMAGE_SOURCE_MAX   = 511   // (generous; unknown ids simply never fire)
-const float BH_EXPLOSION_RANGE     = 1500.0 // game units (~38 m): farther explosions are ignored
+const float BH_EXPLOSION_RANGE     = 1500.0 // game units (1 unit ~ 1 inch, so ~38 m / 125 ft)
+const float BH_PROJECTILE_MIN_LIFE = 0.3   // seconds: shorter-lived projectiles are client-side
+                                           // stand-ins (e.g. your own grenade at the moment you throw it)
 const float BH_EXPLOSION_MIN_INTENSITY = 0.2 // intensity at the edge of the range
+const float BH_EXPLOSION_DEDUPE    = 0.3   // seconds: a rocket salvo or a blast seen by both methods plays once
+
+struct BH_Projectile
+{
+	entity ent
+	vector lastOrigin
+	float  createdTime
+	string weaponName
+}
 
 struct
 {
+	array<BH_Projectile> projectiles
 	int   heartbeatGeneration = 0
 	bool  heartbeatActive     = false
 	int   lastHealth          = -1
@@ -32,6 +47,7 @@ struct
 	float lastHealingTime     = -999.0
 	entity recoilWeapon
 	int    recoilClip         = -1
+	float  lastExplosionTime  = -999.0
 	bool   meleeActive        = false
 } file
 
@@ -46,14 +62,10 @@ void function TF2VR_BH_ClientInit()
 	AddServerToClientStringCommandCallback( "BH_PlayerKilled", BH_OnPlayerKilledCommand )
 	AddCallback_LocalClientPlayerSpawned( BH_OnLocalPlayerSpawned )
 
-	// Explosions, method 1: grenade and rocket projectiles being destroyed
-	// (= detonating). Vanilla code uses the same destroy callback for grenades.
-	// The create callbacks only log, to see which classes exist on the client.
-	foreach ( string className in [ "grenade_frag", "rpg_missile", "grenade" ] )
-	{
-		AddCreateCallback( className, BH_OnProjectileCreated )
-		AddDestroyCallback( className, BH_OnProjectileDestroyed )
-	}
+	// Explosions, method 1: projectiles (grenades, rockets) are reported by
+	// ClientCodeCallback_OnMissileCreation in tf2vr_bh_missiles_client.nut and
+	// tracked until they disappear (= detonate).
+	thread BH_ProjectileWatchThread()
 
 	// Damage callbacks are registered per damage source id.
 	for ( int id = BH_DAMAGE_SOURCE_MIN; id <= BH_DAMAGE_SOURCE_MAX; id++ )
@@ -362,35 +374,81 @@ string function BH_RecoilGroup( string weaponClass )
 //  12. Explosions
 // ===================================================================
 
-// Diagnostics only: shows which projectile classes exist on the client.
-void function BH_OnProjectileCreated( entity projectile )
+// Method 1: track projectiles from creation until they disappear. When one
+// vanishes near the player, that is where it detonated.
+void function BH_TrackProjectile( entity ent, string weaponName )
 {
-	if ( IsValid( projectile ) )
-		BH_Debug( "Projectile created: " + projectile.GetClassName() )
-}
-
-// Method 1: a grenade or rocket was destroyed near the player.
-void function BH_OnProjectileDestroyed( entity projectile )
-{
-	entity player = GetLocalViewPlayer()
-	if ( !IsValid( player ) || !IsValid( projectile ) )
+	if ( !IsValid( ent ) )
 		return
 
-	vector origin = projectile.GetOrigin()
-	float dist = Distance( origin, player.GetOrigin() )
-	BH_Debug( "Projectile destroyed: " + projectile.GetClassName() + " at distance " + dist )
-	if ( dist > BH_EXPLOSION_RANGE )
+	foreach ( BH_Projectile p in file.projectiles )
+	{
+		if ( p.ent == ent )
+			return // already tracked (the callback can fire more than once)
+	}
+
+	BH_Projectile p
+	p.ent         = ent
+	p.lastOrigin  = ent.GetOrigin()
+	p.createdTime = Time()
+	p.weaponName  = weaponName
+	file.projectiles.append( p )
+
+	BH_Debug( "Projectile tracked: " + ent.GetClassName() + " (" + weaponName + ")" )
+}
+
+void function BH_ProjectileWatchThread()
+{
+	while ( true )
+	{
+		WaitFrame()
+
+		for ( int i = file.projectiles.len() - 1; i >= 0; i-- )
+		{
+			if ( IsValid( file.projectiles[ i ].ent ) )
+			{
+				file.projectiles[ i ].lastOrigin = file.projectiles[ i ].ent.GetOrigin()
+				continue
+			}
+
+			BH_Projectile gone = file.projectiles[ i ]
+			file.projectiles.remove( i )
+			BH_OnProjectileGone( gone )
+		}
+	}
+}
+
+void function BH_OnProjectileGone( BH_Projectile p )
+{
+	float life = Time() - p.createdTime
+	entity player = GetLocalViewPlayer()
+	if ( !IsValid( player ) )
+		return
+
+	float dist = Distance( p.lastOrigin, player.GetOrigin() )
+	BH_Debug( "Projectile gone: " + p.weaponName + " after " + life + " s at distance " + dist )
+
+	if ( life < BH_PROJECTILE_MIN_LIFE || dist > BH_EXPLOSION_RANGE )
 		return
 
 	// Linear falloff: full strength at the player, minimum at the range edge.
 	float intensity = 1.0 - ( dist / BH_EXPLOSION_RANGE ) * ( 1.0 - BH_EXPLOSION_MIN_INTENSITY )
-	BH_PlayExplosion( "destroy", intensity, BH_HitAngle( player, origin ) )
+	BH_PlayExplosion( "projectile", intensity, BH_HitAngle( player, p.lastOrigin ) )
 }
 
 // Shared by both methods. "method" only goes to the debug log, to compare
 // which method catches which blasts.
 void function BH_PlayExplosion( string method, float intensity, float angle )
 {
+	// Explosions only block other explosions; impact and everything else
+	// always play.
+	if ( Time() - file.lastExplosionTime < BH_EXPLOSION_DEDUPE )
+	{
+		BH_Debug( "Explosion via " + method + " skipped (another explosion within " + BH_EXPLOSION_DEDUPE + " s)" )
+		return
+	}
+	file.lastExplosionTime = Time()
+
 	BH_Debug( "Explosion via " + method + ", intensity " + intensity + ", angle " + angle )
 	BH_PlayParam( "explosion", intensity, 1.0, angle, 0.0 )
 }
