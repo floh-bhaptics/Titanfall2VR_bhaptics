@@ -21,7 +21,6 @@ const int   BH_DAMAGE_SOURCE_MIN   = -1    // eDamageSourceId range to listen to
 const int   BH_DAMAGE_SOURCE_MAX   = 511   // (generous; unknown ids simply never fire)
 const float BH_EXPLOSION_RANGE     = 1500.0 // game units (~38 m): farther explosions are ignored
 const float BH_EXPLOSION_MIN_INTENSITY = 0.2 // intensity at the edge of the range
-const float BH_EXPLOSION_DEDUPE    = 0.3   // seconds: one blast felt once, even if both methods see it
 
 struct
 {
@@ -33,7 +32,6 @@ struct
 	float lastHealingTime     = -999.0
 	entity recoilWeapon
 	int    recoilClip         = -1
-	float  lastExplosionTime  = -999.0
 	bool   meleeActive        = false
 } file
 
@@ -50,8 +48,12 @@ void function TF2VR_BH_ClientInit()
 
 	// Explosions, method 1: grenade and rocket projectiles being destroyed
 	// (= detonating). Vanilla code uses the same destroy callback for grenades.
-	AddDestroyCallback( "grenade_frag", BH_OnProjectileDestroyed )
-	AddDestroyCallback( "rpg_missile", BH_OnProjectileDestroyed )
+	// The create callbacks only log, to see which classes exist on the client.
+	foreach ( string className in [ "grenade_frag", "rpg_missile", "grenade" ] )
+	{
+		AddCreateCallback( className, BH_OnProjectileCreated )
+		AddDestroyCallback( className, BH_OnProjectileDestroyed )
+	}
 
 	// Damage callbacks are registered per damage source id.
 	for ( int id = BH_DAMAGE_SOURCE_MIN; id <= BH_DAMAGE_SOURCE_MAX; id++ )
@@ -360,6 +362,13 @@ string function BH_RecoilGroup( string weaponClass )
 //  12. Explosions
 // ===================================================================
 
+// Diagnostics only: shows which projectile classes exist on the client.
+void function BH_OnProjectileCreated( entity projectile )
+{
+	if ( IsValid( projectile ) )
+		BH_Debug( "Projectile created: " + projectile.GetClassName() )
+}
+
 // Method 1: a grenade or rocket was destroyed near the player.
 void function BH_OnProjectileDestroyed( entity projectile )
 {
@@ -369,12 +378,12 @@ void function BH_OnProjectileDestroyed( entity projectile )
 
 	vector origin = projectile.GetOrigin()
 	float dist = Distance( origin, player.GetOrigin() )
+	BH_Debug( "Projectile destroyed: " + projectile.GetClassName() + " at distance " + dist )
 	if ( dist > BH_EXPLOSION_RANGE )
 		return
 
 	// Linear falloff: full strength at the player, minimum at the range edge.
 	float intensity = 1.0 - ( dist / BH_EXPLOSION_RANGE ) * ( 1.0 - BH_EXPLOSION_MIN_INTENSITY )
-	BH_Debug( "Explosion (" + projectile.GetClassName() + ") at distance " + dist )
 	BH_PlayExplosion( "destroy", intensity, BH_HitAngle( player, origin ) )
 }
 
@@ -382,13 +391,6 @@ void function BH_OnProjectileDestroyed( entity projectile )
 // which method catches which blasts.
 void function BH_PlayExplosion( string method, float intensity, float angle )
 {
-	if ( Time() - file.lastExplosionTime < BH_EXPLOSION_DEDUPE )
-	{
-		BH_Debug( "Explosion via " + method + " skipped (already played)" )
-		return
-	}
-	file.lastExplosionTime = Time()
-
 	BH_Debug( "Explosion via " + method + ", intensity " + intensity + ", angle " + angle )
 	BH_PlayParam( "explosion", intensity, 1.0, angle, 0.0 )
 }

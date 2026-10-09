@@ -5,7 +5,7 @@ For players: see `README.md` (installation only). This file is for development.
 bHaptics support for CircuitLord's Titanfall 2 VR mod, built as a Northstar
 plugin (native DLL) plus a small Northstar mod (Squirrel scripts).
 
-Current state (v0.4.0): the plugin connects to the bHaptics Player, plays a
+Current state (v0.4.1): the plugin connects to the bHaptics Player, plays a
 heartbeat on startup, and gives the game scripts `BH_*` functions. The mod's
 scripts use them for damage, health, death, movement, Titan events, recoil,
 explosions and Titan melee.
@@ -116,7 +116,7 @@ All names are lower case, as they must be in the bHaptics portal.
 | `recoil_pistol_r` / `_l` | Shot with a pistol or SMG, right / left hand | client |
 | `recoil_rifle_r` / `_l` | Shot with a rifle or LMG | client |
 | `recoil_shotgun_r` / `_l` | Shot with a shotgun, sniper or launcher | client |
-| `recoil_titan` | Shot with a Titan weapon that has a magazine | client |
+| `recoil_titan` | Shot with a Titan weapon that has a magazine (incl. Burst Core) | client |
 | `explosion` | Grenade/rocket detonating within ~38 m (intensity by distance, directional), or explosive damage on the player | client |
 | `titan_melee` | Titan punch or sword swing | client |
 
