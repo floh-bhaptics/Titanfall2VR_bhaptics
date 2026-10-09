@@ -5,9 +5,10 @@ For players: see `README.md` (installation only). This file is for development.
 bHaptics support for CircuitLord's Titanfall 2 VR mod, built as a Northstar
 plugin (native DLL) plus a small Northstar mod (Squirrel scripts).
 
-Current state (v0.3.0): the plugin connects to the bHaptics Player, plays a
+Current state (v0.4.0): the plugin connects to the bHaptics Player, plays a
 heartbeat on startup, and gives the game scripts `BH_*` functions. The mod's
-scripts use them for damage, health, death, movement, Titan events and recoil.
+scripts use them for damage, health, death, movement, Titan events, recoil,
+explosions and Titan melee.
 
 ## Where everything goes
 
@@ -115,13 +116,16 @@ All names are lower case, as they must be in the bHaptics portal.
 | `recoil_pistol_r` / `_l` | Shot with a pistol or SMG, right / left hand | client |
 | `recoil_rifle_r` / `_l` | Shot with a rifle or LMG | client |
 | `recoil_shotgun_r` / `_l` | Shot with a shotgun, sniper or launcher | client |
+| `recoil_titan` | Shot with a Titan weapon that has a magazine | client |
+| `explosion` | Grenade/rocket detonating within ~38 m (intensity by distance, directional), or explosive damage on the player | client |
+| `titan_melee` | Titan punch or sword swing | client |
 
 Recoil: shots are detected when the active weapon's magazine count drops
 (no game hook involved). The hand comes from the VR mod's
 `TF2VR_WeaponHand()` (0 = left, 1 = right; the main hand when held with
 both hands). The weapon groups are in `BH_RecoilGroup()` in the client
 script; unknown weapons fall back to `rifle` and are logged. Weapons
-without a magazine (charge weapons) and Titan weapons play no recoil yet.
+without a magazine (charge weapons) play no recoil.
 
 Tuning constants (loop intervals, low-health threshold) are at the top of the
 two `.nut` files.
@@ -190,4 +194,6 @@ mod\Titanfall2VR_bhaptics\   Northstar mod, copied to TF2VR\mods\
 
 ## Next steps
 
-- Recoil for weapons without a magazine, and Titan weapons.
+- Recoil for weapons without a magazine.
+- Titan footsteps: the engine plays the native `titan_cockpit_footstep`
+  rumble, no script hook exists. Needs a native rumble hook (CircuitLord).

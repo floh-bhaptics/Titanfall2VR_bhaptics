@@ -19,6 +19,9 @@ const float BH_HEARTBEAT_INTERVAL  = 1.0   // seconds between heartbeat starts
 const float BH_HEALING_COOLDOWN    = 1.0   // min. seconds between two "healing" events
 const int   BH_DAMAGE_SOURCE_MIN   = -1    // eDamageSourceId range to listen to
 const int   BH_DAMAGE_SOURCE_MAX   = 511   // (generous; unknown ids simply never fire)
+const float BH_EXPLOSION_RANGE     = 1500.0 // game units (~38 m): farther explosions are ignored
+const float BH_EXPLOSION_MIN_INTENSITY = 0.2 // intensity at the edge of the range
+const float BH_EXPLOSION_DEDUPE    = 0.3   // seconds: one blast felt once, even if both methods see it
 
 struct
 {
@@ -30,6 +33,8 @@ struct
 	float lastHealingTime     = -999.0
 	entity recoilWeapon
 	int    recoilClip         = -1
+	float  lastExplosionTime  = -999.0
+	bool   meleeActive        = false
 } file
 
 #endif
@@ -43,12 +48,18 @@ void function TF2VR_BH_ClientInit()
 	AddServerToClientStringCommandCallback( "BH_PlayerKilled", BH_OnPlayerKilledCommand )
 	AddCallback_LocalClientPlayerSpawned( BH_OnLocalPlayerSpawned )
 
+	// Explosions, method 1: grenade and rocket projectiles being destroyed
+	// (= detonating). Vanilla code uses the same destroy callback for grenades.
+	AddDestroyCallback( "grenade_frag", BH_OnProjectileDestroyed )
+	AddDestroyCallback( "rpg_missile", BH_OnProjectileDestroyed )
+
 	// Damage callbacks are registered per damage source id.
 	for ( int id = BH_DAMAGE_SOURCE_MIN; id <= BH_DAMAGE_SOURCE_MAX; id++ )
 		AddLocalPlayerTookDamageCallback( id, BH_OnLocalPlayerTookDamage )
 
 	thread BH_HealthWatchThread()
 	thread BH_RecoilWatchThread()
+	thread BH_MeleeWatchThread()
 #else
 	printt( "[Titanfall2VR_bhaptics] client script loaded, native plugin NOT loaded - haptics disabled" )
 #endif
@@ -90,6 +101,10 @@ void function BH_OnLocalPlayerTookDamage( float damage, vector damageOrigin, int
 	float angle = BH_HitAngle( player, damageOrigin )
 	BH_Debug( "Took damage " + damage + " (source " + damageSourceId + ", type " + damageType + ") at angle " + angle )
 	BH_PlayParam( "impact", 1.0, 1.0, angle, 0.0 )
+
+	// Explosions, method 2: explosive damage on the player.
+	if ( ( damageType & DF_EXPLOSION ) != 0 )
+		BH_PlayExplosion( "damage", 1.0, angle )
 }
 
 // ===================================================================
@@ -256,11 +271,24 @@ void function BH_RecoilWatchThread()
 			continue
 		}
 
-		if ( clip < file.recoilClip && !player.IsTitan() ) // Titan weapons: no recoil for now
-			BH_PlayRecoil( weapon )
+		if ( clip < file.recoilClip )
+		{
+			if ( player.IsTitan() )
+				BH_PlayTitanRecoil( weapon )
+			else
+				BH_PlayRecoil( weapon )
+		}
 
 		file.recoilClip = clip
 	}
+}
+
+// Titan weapons with a magazine (XO-16, 40mm, Leadwall, ...). No hand: the
+// Titan fires, not the player. Weapons without a magazine don't trigger this.
+void function BH_PlayTitanRecoil( entity weapon )
+{
+	BH_Debug( "Titan shot: " + weapon.GetWeaponClassName() )
+	BH_Play( "recoil_titan" )
 }
 
 void function BH_PlayRecoil( entity weapon )
@@ -326,6 +354,70 @@ string function BH_RecoilGroup( string weaponClass )
 
 	BH_Debug( "Recoil: unmapped weapon class " + weaponClass + ", using rifle" )
 	return "rifle"
+}
+
+// ===================================================================
+//  12. Explosions
+// ===================================================================
+
+// Method 1: a grenade or rocket was destroyed near the player.
+void function BH_OnProjectileDestroyed( entity projectile )
+{
+	entity player = GetLocalViewPlayer()
+	if ( !IsValid( player ) || !IsValid( projectile ) )
+		return
+
+	vector origin = projectile.GetOrigin()
+	float dist = Distance( origin, player.GetOrigin() )
+	if ( dist > BH_EXPLOSION_RANGE )
+		return
+
+	// Linear falloff: full strength at the player, minimum at the range edge.
+	float intensity = 1.0 - ( dist / BH_EXPLOSION_RANGE ) * ( 1.0 - BH_EXPLOSION_MIN_INTENSITY )
+	BH_Debug( "Explosion (" + projectile.GetClassName() + ") at distance " + dist )
+	BH_PlayExplosion( "destroy", intensity, BH_HitAngle( player, origin ) )
+}
+
+// Shared by both methods. "method" only goes to the debug log, to compare
+// which method catches which blasts.
+void function BH_PlayExplosion( string method, float intensity, float angle )
+{
+	if ( Time() - file.lastExplosionTime < BH_EXPLOSION_DEDUPE )
+	{
+		BH_Debug( "Explosion via " + method + " skipped (already played)" )
+		return
+	}
+	file.lastExplosionTime = Time()
+
+	BH_Debug( "Explosion via " + method + ", intensity " + intensity + ", angle " + angle )
+	BH_PlayParam( "explosion", intensity, 1.0, angle, 0.0 )
+}
+
+// ===================================================================
+//  13. Titan melee (punch and sword)
+//
+//  Polls the player's melee state; a change to "attack active" is a swing.
+// ===================================================================
+
+void function BH_MeleeWatchThread()
+{
+	while ( true )
+	{
+		WaitFrame()
+
+		entity player = GetLocalClientPlayer()
+		if ( !IsValid( player ) || !IsAlive( player ) )
+		{
+			file.meleeActive = false
+			continue
+		}
+
+		bool active = player.PlayerMelee_IsAttackActive()
+		if ( active && !file.meleeActive && player.IsTitan() )
+			BH_Play( "titan_melee" )
+
+		file.meleeActive = active
+	}
 }
 
 #endif
