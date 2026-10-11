@@ -10,9 +10,6 @@
 // Event names are lower-cased by the plugin before they reach bHaptics.
 
 global function TF2VR_BH_ClientInit
-#if TF2VR_BHAPTICS
-global function BH_TrackProjectile // called from tf2vr_bh_missiles_client.nut
-#endif
 
 #if TF2VR_BHAPTICS
 
@@ -418,29 +415,6 @@ string function BH_RecoilGroup( string weaponClass )
 // ===================================================================
 //  12. Explosions
 // ===================================================================
-
-// Method 1: track projectiles from creation until they disappear. When one
-// vanishes near the player, that is where it detonated.
-void function BH_TrackProjectile( entity ent, string weaponName )
-{
-	if ( !IsValid( ent ) )
-		return
-
-	foreach ( BH_Projectile p in file.projectiles )
-	{
-		if ( p.ent == ent )
-			return // already tracked (the callback can fire more than once)
-	}
-
-	BH_Projectile p
-	p.ent         = ent
-	p.lastOrigin  = ent.GetOrigin()
-	p.createdTime = Time()
-	p.weaponName  = weaponName
-	file.projectiles.append( p )
-
-	BH_Debug( "Projectile tracked: " + ent.GetClassName() + " (" + weaponName + ")" )
-}
 
 void function BH_ProjectileWatchThread()
 {
