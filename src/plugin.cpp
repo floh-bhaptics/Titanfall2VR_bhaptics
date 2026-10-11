@@ -16,7 +16,7 @@
 namespace
 {
     constexpr const char* kPluginName     = "Titanfall2VR_bhaptics";
-    constexpr const char* kPluginVersion  = "0.5.0";
+    constexpr const char* kPluginVersion  = "0.5.1";
     constexpr const char* kLogName        = "BHAPTICS";
     // Squirrel constant for mod.json "PluginDependencies". Must be a valid
     // Squirrel identifier, otherwise Northstar refuses to load the plugin.
@@ -69,9 +69,9 @@ namespace
 
         bool Unload() override
         {
-            haptics::Shutdown();
-            logging::Debug("%s unloading", kPluginName);
-            return true;
+            const bool stopped = haptics::Shutdown();
+            logging::Debug("%s %s", kPluginName, stopped ? "unloading" : "stays loaded (bHaptics worker busy)");
+            return stopped;
         }
 
         void OnSqvmCreated(ns::CSquirrelVM* vm) override

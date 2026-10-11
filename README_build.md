@@ -5,7 +5,7 @@ For players: see `README.md` (installation only). This file is for development.
 bHaptics support for CircuitLord's Titanfall 2 VR mod, built as a Northstar
 plugin (native DLL) plus a small Northstar mod (Squirrel scripts).
 
-Current state (v0.5.0): the plugin connects to the bHaptics Player, plays a
+Current state (v0.5.1): the plugin connects to the bHaptics Player, plays a
 heartbeat on startup, and gives the game scripts `BH_*` functions. The mod's
 scripts use them for damage, health, death, movement, Titan events, recoil,
 explosions and Titan melee.
@@ -117,7 +117,7 @@ All names are lower case, as they must be in the bHaptics portal.
 | `recoil_rifle_r` / `_l` | Shot with a rifle or LMG | client |
 | `recoil_shotgun_r` / `_l` | Shot with a shotgun, sniper or launcher | client |
 | `recoil_titan` | Shot with a Titan weapon that has a magazine (incl. Burst Core) | client |
-| `explosion` | Projectile (grenade, rocket) detonating within ~38 m (intensity by distance, directional), or explosive damage on the player; max. one per 0.3 s | client |
+| `explosion` | Explosive damage on the player; max. one per 0.3 s. (Projectile tracking via `tf2vr_bh_missiles_client.nut` is disabled since v0.5.1, see the file.) | client |
 | `titan_melee` | Titan punch or sword swing | client |
 
 Recoil: shots are detected when the active weapon's magazine count drops
@@ -133,6 +133,13 @@ two `.nut` files.
 Note: the game's Squirrel compiler refuses to pass typed callbacks through
 `var` parameters, so hooks can't be looked up by name at runtime. They are
 called directly.
+
+## Threading
+
+All bHaptics SDK calls run on one worker thread (`src/haptics.cpp`). The game
+thread only queues events (max. 32 pending, oldest dropped) and reads a cached
+connection flag, so a slow or hanging bHaptics library/Player can't freeze the
+game. Slow SDK calls (>100 ms) and hangs (>2 s) are logged as warnings.
 
 ## Script API (natives from the plugin)
 
