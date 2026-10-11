@@ -121,7 +121,7 @@ All names are lower case, as they must be in the bHaptics portal.
 | `titan_melee` | Titan punch or sword swing | client |
 | `titan_footstep` | Own Titan's footfall: walk animation cycle crosses 0.0 / 0.5 while moving on the ground | client |
 | `titanfall` | Any Titan (incl. our own) landing after a fast fall, within ~100 m; intensity by distance, directional | client |
-| `recoil_titan_rockets` | Own Titan fires shoulder rockets (ordnance slot: clip drop or cooldown start) | client |
+| `recoil_titan_rockets` | Own Titan fires shoulder rockets: once at the start of each salvo (ordnance slot: clip drop or cooldown start, then 3 s quiet period). Ordnance fired as the active weapon (Tone's tracker rockets) plays `recoil_titan` instead | client |
 
 Recoil: shots are detected when the active weapon's magazine count drops
 (no game hook involved). The hand comes from the VR mod's

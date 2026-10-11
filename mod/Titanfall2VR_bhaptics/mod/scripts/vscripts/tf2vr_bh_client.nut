@@ -44,6 +44,11 @@ const float BH_TITANFALL_MIN_FALL   = 0.15   // seconds of falling needed (filte
 const float BH_TITANFALL_RANGE      = 4000.0 // ~100 m: farther landings are ignored
 const float BH_TITANFALL_MIN_INTENSITY = 0.3
 
+// Shoulder rockets: one effect per salvo. Further detections are ignored
+// until no rocket activity was seen for this long (salvos in testing were
+// >= 5 s apart, detections within one salvo up to ~2 s apart).
+const float BH_ROCKET_SALVO_QUIET  = 3.0
+
 struct BH_Projectile
 {
 	entity ent
@@ -71,6 +76,7 @@ struct
 	entity ordnanceWeapon
 	int    ordnanceClip       = -1
 	float  ordnanceCooldown   = 0.0
+	float  lastRocketActivity = -999.0
 	int   heartbeatGeneration = 0
 	bool  heartbeatActive     = false
 	int   lastHealth          = -1
@@ -696,8 +702,9 @@ void function BH_PlayTitanfall( entity player, BH_FallTracker t, vector origin )
 //  16. Titan shoulder rockets (ordnance slot)
 //
 //  Technique from the Titanfall2-SimHub-Motion-Addon: rocket ordnance is
-//  recognized by class name. A shot is a drop in its clip, or (for weapons
-//  without a usable clip) the attack cooldown starting.
+//  recognized by class name. Activity is a drop in its clip or the attack
+//  cooldown starting (shoulder rockets: twice per salvo). Only the first
+//  activity of a salvo plays the effect.
 // ===================================================================
 
 void function BH_TitanRocketWatchThread()
@@ -713,8 +720,11 @@ void function BH_TitanRocketWatchThread()
 			continue
 		}
 
+		// Rocket ordnance that becomes the active weapon when fired (e.g. Tone's
+		// tracker rockets) is already covered by the normal Titan recoil.
 		entity ordnance = player.GetOffhandWeapon( OFFHAND_ORDNANCE )
-		if ( !IsValid( ordnance ) || !BH_IsTitanRocketWeapon( ordnance.GetWeaponClassName() ) )
+		if ( !IsValid( ordnance ) || !BH_IsTitanRocketWeapon( ordnance.GetWeaponClassName() )
+			|| ordnance == player.GetActiveWeapon() )
 		{
 			file.ordnanceWeapon = null
 			continue
@@ -735,15 +745,21 @@ void function BH_TitanRocketWatchThread()
 			continue
 		}
 
+		string detected = ""
 		if ( clip < file.ordnanceClip )
-		{
-			BH_Debug( "Titan rocket fired (clip " + file.ordnanceClip + " -> " + clip + ")" )
-			BH_Play( "recoil_titan_rockets" )
-		}
+			detected = "clip " + file.ordnanceClip + " -> " + clip
 		else if ( file.ordnanceCooldown < 0.05 && cooldown > 0.2 && clip == file.ordnanceClip )
+			detected = "cooldown started: " + cooldown + " s"
+
+		if ( detected != "" )
 		{
-			BH_Debug( "Titan rocket fired (cooldown started: " + cooldown + " s)" )
-			BH_Play( "recoil_titan_rockets" )
+			// Only the first detection of a salvo plays; the pattern in the
+			// bHaptics portal covers the whole salvo.
+			bool newSalvo = Time() - file.lastRocketActivity > BH_ROCKET_SALVO_QUIET
+			file.lastRocketActivity = Time()
+			BH_Debug( "Titan rocket activity (" + detected + ")" + ( newSalvo ? ", new salvo" : ", same salvo, skipped" ) )
+			if ( newSalvo )
+				BH_Play( "recoil_titan_rockets" )
 		}
 
 		file.ordnanceClip     = clip
@@ -755,7 +771,8 @@ bool function BH_IsTitanRocketWeapon( string weaponClass )
 {
 	switch ( weaponClass )
 	{
-		case "mp_titanweapon_tracker_rockets":
+		// not "mp_titanweapon_tracker_rockets": fired as the active weapon,
+		// so the normal Titan recoil handles it
 		case "mp_titanweapon_shoulder_rockets":
 		case "mp_titanweapon_homing_rockets":
 		case "mp_titanweapon_salvo_rockets":
