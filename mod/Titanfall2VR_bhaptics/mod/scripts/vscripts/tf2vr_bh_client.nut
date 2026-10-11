@@ -65,7 +65,7 @@ struct
 {
 	array<BH_Projectile> projectiles
 	array<BH_FallTracker> titans
-	BH_FallTracker playerFall
+	BH_FallTracker& playerFall // reference: struct fields can only be reassigned as references
 	bool   playerFallInit     = false
 	float  lastStepCycle      = -1.0
 	entity ordnanceWeapon
