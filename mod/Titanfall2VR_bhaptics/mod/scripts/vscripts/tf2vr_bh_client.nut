@@ -28,6 +28,22 @@ const float BH_PROJECTILE_MIN_LIFE = 0.3   // seconds: shorter-lived projectiles
 const float BH_EXPLOSION_MIN_INTENSITY = 0.2 // intensity at the edge of the range
 const float BH_EXPLOSION_DEDUPE    = 0.3   // seconds: a rocket salvo or a blast seen by both methods plays once
 
+// Titan footsteps (technique from the Titanfall2-SimHub-Motion-Addon by nicotrial):
+// a footfall is a crossing of 0.0 or 0.5 in the Titan's animation cycle,
+// gated by horizontal speed and being on the ground. Speeds in game units/s.
+const float BH_STEP_SPEED_MIN      = 20.0  // ~0.5 m/s: below this, no steps
+const float BH_STEP_SPEED_FULL     = 118.0 // ~3 m/s: full walking blend
+const float BH_STEP_VERTICAL_MAX   = 79.0  // ~2 m/s: faster vertical motion = not grounded
+const float BH_STEP_BLEND_MIN      = 0.2   // walking * grounded blend needed for a step
+const float BH_STEP_MAX_ADVANCE    = 0.25  // larger cycle jumps = animation switch, not a step
+
+// Titanfall: a Titan falling fast and then stopping abruptly.
+const float BH_TITANFALL_FALL_SPEED = 600.0  // ~15 m/s downwards counts as falling
+const float BH_TITANFALL_STOP_SPEED = 150.0  // slower than this after falling = landed
+const float BH_TITANFALL_MIN_FALL   = 0.15   // seconds of falling needed (filters teleports)
+const float BH_TITANFALL_RANGE      = 4000.0 // ~100 m: farther landings are ignored
+const float BH_TITANFALL_MIN_INTENSITY = 0.3
+
 struct BH_Projectile
 {
 	entity ent
@@ -36,9 +52,25 @@ struct BH_Projectile
 	string weaponName
 }
 
+struct BH_FallTracker
+{
+	entity ent
+	float  lastZ
+	float  lastTime
+	float  fallTime     // seconds spent falling fast so far
+	float  maxFallSpeed // fastest downward speed seen in this fall
+}
+
 struct
 {
 	array<BH_Projectile> projectiles
+	array<BH_FallTracker> titans
+	BH_FallTracker playerFall
+	bool   playerFallInit     = false
+	float  lastStepCycle      = -1.0
+	entity ordnanceWeapon
+	int    ordnanceClip       = -1
+	float  ordnanceCooldown   = 0.0
 	int   heartbeatGeneration = 0
 	bool  heartbeatActive     = false
 	int   lastHealth          = -1
@@ -74,6 +106,13 @@ void function TF2VR_BH_ClientInit()
 	thread BH_HealthWatchThread()
 	thread BH_RecoilWatchThread()
 	thread BH_MeleeWatchThread()
+	thread BH_TitanStepWatchThread()
+	thread BH_TitanRocketWatchThread()
+
+	// Titanfall: track every Titan that appears (plus our own Titan when we
+	// are inside, see BH_TitanfallWatchThread).
+	AddCreateCallback( "npc_titan", BH_OnNpcTitanCreated )
+	thread BH_TitanfallWatchThread()
 #else
 	printt( "[Titanfall2VR_bhaptics] client script loaded, native plugin NOT loaded - haptics disabled" )
 #endif
@@ -478,6 +517,252 @@ void function BH_MeleeWatchThread()
 
 		file.meleeActive = active
 	}
+}
+
+// ===================================================================
+//  14. Titan footsteps (own Titan only)
+// ===================================================================
+
+void function BH_TitanStepWatchThread()
+{
+	while ( true )
+	{
+		WaitFrame()
+
+		entity player = GetLocalViewPlayer()
+		if ( !IsValid( player ) || !IsAlive( player ) || !player.IsTitan() )
+		{
+			file.lastStepCycle = -1.0
+			continue
+		}
+
+		float cycle = player.GetCycle()
+		float previous = file.lastStepCycle
+		file.lastStepCycle = cycle
+		if ( previous < 0.0 )
+			continue
+
+		vector velocity = player.GetVelocity()
+		float speed = sqrt( velocity.x * velocity.x + velocity.y * velocity.y )
+		float vertical = velocity.z < 0.0 ? -velocity.z : velocity.z
+
+		float walking  = BH_Clamp01( ( speed - BH_STEP_SPEED_MIN ) / ( BH_STEP_SPEED_FULL - BH_STEP_SPEED_MIN ) )
+		float grounded = 1.0 - BH_Clamp01( vertical / BH_STEP_VERTICAL_MAX )
+		if ( walking * grounded <= BH_STEP_BLEND_MIN || !player.IsOnGround() )
+			continue
+
+		float advance = cycle >= previous ? cycle - previous : cycle + 1.0 - previous
+		if ( advance <= 0.0001 || advance > BH_STEP_MAX_ADVANCE )
+			continue
+
+		if ( BH_CycleCrossed( previous, cycle, 0.0 ) || BH_CycleCrossed( previous, cycle, 0.5 ) )
+		{
+			BH_Debug( "Titan footstep (cycle " + previous + " -> " + cycle + ", speed " + speed + ")" )
+			BH_Play( "titan_footstep" )
+		}
+	}
+}
+
+// True if the animation cycle passed "phase" between two samples (wraps at 1.0).
+bool function BH_CycleCrossed( float previous, float current, float phase )
+{
+	if ( current >= previous )
+		return previous < phase && current >= phase
+	return phase > previous || phase <= current
+}
+
+float function BH_Clamp01( float value )
+{
+	if ( value < 0.0 )
+		return 0.0
+	if ( value > 1.0 )
+		return 1.0
+	return value
+}
+
+// ===================================================================
+//  15. Titanfall (any Titan landing from a drop, incl. our own)
+// ===================================================================
+
+void function BH_OnNpcTitanCreated( entity titan )
+{
+	if ( !IsValid( titan ) )
+		return
+
+	BH_FallTracker t
+	t.ent      = titan
+	t.lastZ    = titan.GetOrigin().z
+	t.lastTime = Time()
+	file.titans.append( t )
+	BH_Debug( "Titan tracked for titanfall (" + file.titans.len() + " tracked)" )
+}
+
+void function BH_TitanfallWatchThread()
+{
+	while ( true )
+	{
+		WaitFrame()
+
+		entity player = GetLocalViewPlayer()
+		if ( !IsValid( player ) )
+			continue
+
+		// NPC Titans (enemies, BT as a separate Titan)
+		for ( int i = file.titans.len() - 1; i >= 0; i-- )
+		{
+			if ( !IsValid( file.titans[ i ].ent ) )
+			{
+				file.titans.remove( i )
+				continue
+			}
+			if ( BH_UpdateFall( file.titans[ i ] ) )
+				BH_PlayTitanfall( player, file.titans[ i ], file.titans[ i ].ent.GetOrigin() )
+		}
+
+		// Our own Titan while we are inside it
+		if ( player.IsTitan() && IsAlive( player ) )
+		{
+			if ( !file.playerFallInit || file.playerFall.ent != player )
+			{
+				BH_FallTracker t
+				t.ent      = player
+				t.lastZ    = player.GetOrigin().z
+				t.lastTime = Time()
+				file.playerFall     = t
+				file.playerFallInit = true
+			}
+			else if ( BH_UpdateFall( file.playerFall ) )
+			{
+				BH_PlayTitanfall( player, file.playerFall, player.GetOrigin() )
+			}
+		}
+		else
+		{
+			file.playerFallInit = false
+		}
+	}
+}
+
+// Updates a tracker with the entity's current height. Returns true once when
+// a fast fall ends abruptly (= landed).
+bool function BH_UpdateFall( BH_FallTracker t )
+{
+	float now = Time()
+	float dt = now - t.lastTime
+	if ( dt <= 0.0 )
+		return false
+
+	float z = t.ent.GetOrigin().z
+	float vz = ( z - t.lastZ ) / dt
+	t.lastZ    = z
+	t.lastTime = now
+
+	if ( -vz > BH_TITANFALL_FALL_SPEED )
+	{
+		t.fallTime += dt
+		if ( -vz > t.maxFallSpeed )
+			t.maxFallSpeed = -vz
+		return false
+	}
+
+	bool landed = t.fallTime >= BH_TITANFALL_MIN_FALL && -vz < BH_TITANFALL_STOP_SPEED
+	if ( landed || -vz < BH_TITANFALL_STOP_SPEED )
+	{
+		if ( landed )
+			BH_Debug( "Titan landed after falling " + t.fallTime + " s (max " + t.maxFallSpeed + " units/s)" )
+		t.fallTime     = 0.0
+		t.maxFallSpeed = 0.0
+	}
+	return landed
+}
+
+void function BH_PlayTitanfall( entity player, BH_FallTracker t, vector origin )
+{
+	bool ours = t.ent == player
+	float dist = ours ? 0.0 : Distance( origin, player.GetOrigin() )
+	if ( dist > BH_TITANFALL_RANGE )
+	{
+		BH_Debug( "Titanfall at distance " + dist + " ignored (out of range)" )
+		return
+	}
+
+	float intensity = 1.0 - ( dist / BH_TITANFALL_RANGE ) * ( 1.0 - BH_TITANFALL_MIN_INTENSITY )
+	float angle = ours ? 0.0 : BH_HitAngle( player, origin )
+	BH_Debug( "Titanfall (" + ( ours ? "our Titan" : "distance " + dist ) + "), intensity " + intensity + ", angle " + angle )
+	BH_PlayParam( "titanfall", intensity, 1.0, angle, 0.0 )
+}
+
+// ===================================================================
+//  16. Titan shoulder rockets (ordnance slot)
+//
+//  Technique from the Titanfall2-SimHub-Motion-Addon: rocket ordnance is
+//  recognized by class name. A shot is a drop in its clip, or (for weapons
+//  without a usable clip) the attack cooldown starting.
+// ===================================================================
+
+void function BH_TitanRocketWatchThread()
+{
+	while ( true )
+	{
+		WaitFrame()
+
+		entity player = GetLocalViewPlayer()
+		if ( !IsValid( player ) || !IsAlive( player ) || !player.IsTitan() )
+		{
+			file.ordnanceWeapon = null
+			continue
+		}
+
+		entity ordnance = player.GetOffhandWeapon( OFFHAND_ORDNANCE )
+		if ( !IsValid( ordnance ) || !BH_IsTitanRocketWeapon( ordnance.GetWeaponClassName() ) )
+		{
+			file.ordnanceWeapon = null
+			continue
+		}
+
+		int   clip     = ordnance.GetWeaponPrimaryClipCount()
+		float cooldown = ordnance.GetNextAttackAllowedTime() - Time()
+		if ( cooldown < 0.0 )
+			cooldown = 0.0
+
+		if ( ordnance != file.ordnanceWeapon )
+		{
+			// New Titan or loadout: baseline only.
+			file.ordnanceWeapon   = ordnance
+			file.ordnanceClip     = clip
+			file.ordnanceCooldown = cooldown
+			BH_Debug( "Titan rockets: " + ordnance.GetWeaponClassName() + " clip=" + clip )
+			continue
+		}
+
+		if ( clip < file.ordnanceClip )
+		{
+			BH_Debug( "Titan rocket fired (clip " + file.ordnanceClip + " -> " + clip + ")" )
+			BH_Play( "recoil_titan_rockets" )
+		}
+		else if ( file.ordnanceCooldown < 0.05 && cooldown > 0.2 && clip == file.ordnanceClip )
+		{
+			BH_Debug( "Titan rocket fired (cooldown started: " + cooldown + " s)" )
+			BH_Play( "recoil_titan_rockets" )
+		}
+
+		file.ordnanceClip     = clip
+		file.ordnanceCooldown = cooldown
+	}
+}
+
+bool function BH_IsTitanRocketWeapon( string weaponClass )
+{
+	switch ( weaponClass )
+	{
+		case "mp_titanweapon_tracker_rockets":
+		case "mp_titanweapon_shoulder_rockets":
+		case "mp_titanweapon_homing_rockets":
+		case "mp_titanweapon_salvo_rockets":
+		case "mp_titanweapon_dumbfire_rockets":
+			return true
+	}
+	return false
 }
 
 #endif

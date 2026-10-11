@@ -5,7 +5,7 @@ For players: see `README.md` (installation only). This file is for development.
 bHaptics support for CircuitLord's Titanfall 2 VR mod, built as a Northstar
 plugin (native DLL) plus a small Northstar mod (Squirrel scripts).
 
-Current state (v0.5.1): the plugin connects to the bHaptics Player, plays a
+Current state (v0.6.0): the plugin connects to the bHaptics Player, plays a
 heartbeat on startup, and gives the game scripts `BH_*` functions. The mod's
 scripts use them for damage, health, death, movement, Titan events, recoil,
 explosions and Titan melee.
@@ -119,6 +119,9 @@ All names are lower case, as they must be in the bHaptics portal.
 | `recoil_titan` | Shot with a Titan weapon that has a magazine (incl. Burst Core) | client |
 | `explosion` | Explosive damage on the player; max. one per 0.3 s. (Projectile tracking via `tf2vr_bh_missiles_client.nut` is disabled since v0.5.1, see the file.) | client |
 | `titan_melee` | Titan punch or sword swing | client |
+| `titan_footstep` | Own Titan's footfall: walk animation cycle crosses 0.0 / 0.5 while moving on the ground | client |
+| `titanfall` | Any Titan (incl. our own) landing after a fast fall, within ~100 m; intensity by distance, directional | client |
+| `recoil_titan_rockets` | Own Titan fires shoulder rockets (ordnance slot: clip drop or cooldown start) | client |
 
 Recoil: shots are detected when the active weapon's magazine count drops
 (no game hook involved). The hand comes from the VR mod's
@@ -140,6 +143,10 @@ All bHaptics SDK calls run on one worker thread (`src/haptics.cpp`). The game
 thread only queues events (max. 32 pending, oldest dropped) and reads a cached
 connection flag, so a slow or hanging bHaptics library/Player can't freeze the
 game. Slow SDK calls (>100 ms) and hangs (>2 s) are logged as warnings.
+
+Titan footsteps and shoulder rocket detection use techniques from the
+[Titanfall2-SimHub-Motion-Addon](https://github.com/nicotrial/Titanfall2-SimHub-Motion-Addon)
+by nicotrial.
 
 ## Script API (natives from the plugin)
 
@@ -202,5 +209,5 @@ mod\Titanfall2VR_bhaptics\   Northstar mod, copied to TF2VR\mods\
 ## Next steps
 
 - Recoil for weapons without a magazine.
-- Titan footsteps: the engine plays the native `titan_cockpit_footstep`
-  rumble, no script hook exists. Needs a native rumble hook (CircuitLord).
+- Rocket/grenade detonations near the player (the client missile hook crashed
+  the game on `crossbow_bolt` projectiles; a server-side approach may work).
