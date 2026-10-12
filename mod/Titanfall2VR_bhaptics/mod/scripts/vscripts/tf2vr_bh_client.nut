@@ -10,9 +10,6 @@
 // Event names are lower-cased by the plugin before they reach bHaptics.
 
 global function TF2VR_BH_ClientInit
-#if TF2VR_BHAPTICS
-global function BH_TrackProjectile // called from tf2vr_bh_missiles_client.nut
-#endif
 
 #if TF2VR_BHAPTICS
 
@@ -36,7 +33,7 @@ const float BH_STEP_SPEED_FULL     = 118.0 // ~3 m/s: full walking blend
 const float BH_STEP_VERTICAL_MAX   = 79.0  // ~2 m/s: faster vertical motion = not grounded
 const float BH_STEP_BLEND_MIN      = 0.2   // walking * grounded blend needed for a step
 const float BH_STEP_MAX_ADVANCE    = 0.25  // larger cycle jumps = animation switch, not a step
-const float BH_STEP_LEAD_TIME      = 0.25  // seconds: play this much before the footfall
+const float BH_STEP_LEAD_TIME      = 0.1  // seconds: play this much before the footfall
                                            // (converted to a cycle offset from the current animation speed)
 
 // Titanfall: a Titan falling fast and then stopping abruptly.
