@@ -33,6 +33,7 @@ const float BH_STEP_SPEED_FULL     = 118.0 // ~3 m/s: full walking blend
 const float BH_STEP_VERTICAL_MAX   = 79.0  // ~2 m/s: faster vertical motion = not grounded
 const float BH_STEP_BLEND_MIN      = 0.2   // walking * grounded blend needed for a step
 const float BH_STEP_MAX_ADVANCE    = 0.25  // larger cycle jumps = animation switch, not a step
+const float BH_STEP_LEAD_TIME      = 0.25  // seconds: play this much before the footfall
 
 // Titanfall: a Titan falling fast and then stopping abruptly.
 const float BH_TITANFALL_FALL_SPEED = 600.0  // ~15 m/s downwards counts as falling
@@ -70,6 +71,7 @@ struct
 	BH_FallTracker& playerFall // reference: struct fields can only be reassigned as references
 	bool   playerFallInit     = false
 	float  lastStepCycle      = -1.0
+   	float  lastStepTime       = 0.0
 	entity ordnanceWeapon
 	int    ordnanceClip       = -1
 	float  ordnanceCooldown   = 0.0
@@ -517,6 +519,8 @@ void function BH_TitanStepWatchThread()
 		}
 
 		float cycle = player.GetCycle()
+		float now = Time()
+     	float dt = now - file.lastStepTime
 		float previous = file.lastStepCycle
 		file.lastStepCycle = cycle
 		if ( previous < 0.0 )
@@ -535,7 +539,11 @@ void function BH_TitanStepWatchThread()
 		if ( advance <= 0.0001 || advance > BH_STEP_MAX_ADVANCE )
 			continue
 
-		if ( BH_CycleCrossed( previous, cycle, 0.0 ) || BH_CycleCrossed( previous, cycle, 0.5 ) )
+     	float lead = ( advance / dt ) * BH_STEP_LEAD_TIME
+     	if ( lead > 0.4 )
+     		lead = 0.4
+
+     	if ( BH_CycleCrossed( previous, cycle, 1.0 - lead ) || BH_CycleCrossed( previous, cycle, 0.5 - lead ) )
 		{
 			BH_Debug( "Titan footstep (cycle " + previous + " -> " + cycle + ", speed " + speed + ")" )
 			BH_Play( "titan_footstep" )
