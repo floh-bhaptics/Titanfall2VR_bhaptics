@@ -10,6 +10,9 @@
 // Event names are lower-cased by the plugin before they reach bHaptics.
 
 global function TF2VR_BH_ClientInit
+#if TF2VR_BHAPTICS
+global function BH_TrackProjectile // called from tf2vr_bh_missiles_client.nut
+#endif
 
 #if TF2VR_BHAPTICS
 
@@ -34,6 +37,7 @@ const float BH_STEP_VERTICAL_MAX   = 79.0  // ~2 m/s: faster vertical motion = n
 const float BH_STEP_BLEND_MIN      = 0.2   // walking * grounded blend needed for a step
 const float BH_STEP_MAX_ADVANCE    = 0.25  // larger cycle jumps = animation switch, not a step
 const float BH_STEP_LEAD_TIME      = 0.25  // seconds: play this much before the footfall
+                                           // (converted to a cycle offset from the current animation speed)
 
 // Titanfall: a Titan falling fast and then stopping abruptly.
 const float BH_TITANFALL_FALL_SPEED = 600.0  // ~15 m/s downwards counts as falling
@@ -71,7 +75,7 @@ struct
 	BH_FallTracker& playerFall // reference: struct fields can only be reassigned as references
 	bool   playerFallInit     = false
 	float  lastStepCycle      = -1.0
-   	float  lastStepTime       = 0.0
+	float  lastStepTime       = 0.0
 	entity ordnanceWeapon
 	int    ordnanceClip       = -1
 	float  ordnanceCooldown   = 0.0
@@ -519,11 +523,12 @@ void function BH_TitanStepWatchThread()
 		}
 
 		float cycle = player.GetCycle()
-		float now = Time()
-     	float dt = now - file.lastStepTime
 		float previous = file.lastStepCycle
+		float now = Time()
+		float dt = now - file.lastStepTime
 		file.lastStepCycle = cycle
-		if ( previous < 0.0 )
+		file.lastStepTime  = now
+		if ( previous < 0.0 || dt <= 0.0 )
 			continue
 
 		vector velocity = player.GetVelocity()
@@ -539,13 +544,16 @@ void function BH_TitanStepWatchThread()
 		if ( advance <= 0.0001 || advance > BH_STEP_MAX_ADVANCE )
 			continue
 
-     	float lead = ( advance / dt ) * BH_STEP_LEAD_TIME
-     	if ( lead > 0.4 )
-     		lead = 0.4
+		// Footfalls are at cycle 0.0 and 0.5. Trigger BH_STEP_LEAD_TIME earlier:
+		// convert the time into a cycle offset using the current animation
+		// speed (cycles per second), capped well below half a cycle.
+		float lead = ( advance / dt ) * BH_STEP_LEAD_TIME
+		if ( lead > 0.4 )
+			lead = 0.4
 
-     	if ( BH_CycleCrossed( previous, cycle, 1.0 - lead ) || BH_CycleCrossed( previous, cycle, 0.5 - lead ) )
+		if ( BH_CycleCrossed( previous, cycle, 1.0 - lead ) || BH_CycleCrossed( previous, cycle, 0.5 - lead ) )
 		{
-			BH_Debug( "Titan footstep (cycle " + previous + " -> " + cycle + ", speed " + speed + ")" )
+			BH_Debug( "Titan footstep (cycle " + previous + " -> " + cycle + ", lead " + lead + ", speed " + speed + ")" )
 			BH_Play( "titan_footstep" )
 		}
 	}
