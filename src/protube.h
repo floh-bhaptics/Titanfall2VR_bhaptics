@@ -6,8 +6,7 @@
 // here is a no-op. Like haptics.h, all SDK calls run on a worker thread, so
 // Bluetooth trouble can never freeze the game.
 //
-// Recoil power follows PurplePeanut00's titanfall2-vr-provolver bridge
-// (MIT, (c) 2026 Titanfall 2 VR ProVolver Bridge contributors):
+// Recoil power values follow PurplePeanut00's titanfall2-vr-provolver bridge:
 //   - "full" kicks (actual shotguns) always use 255.
 //   - Other kicks use the SDK's TempoToKickPower() with a recovery time
 //     adapted to the observed fire rate (50-130 ms), so fast automatic fire
@@ -34,16 +33,26 @@ namespace protube
     // True if ForceTubeVR_API_x64.dll was found (device may still be off).
     bool IsAvailable();
 
+    // Hands: "right", "left", or anything else for "no specific hand".
+    // With two devices, right = pistol1 / right.pro, left = pistol2 / left.pro
+    // (see protube.cpp). With one device, every effect goes to it.
+
     // One recoil kick.
     //   weapon: weapon class name, resets the fire-rate adaptation on change
     //   group:  "full"  - always 255 (shotguns)
     //           "heavy" - adaptive, starts with 130 ms recovery
     //           other   - adaptive, starts with 60 ms recovery
-    void Kick(const char* weapon, const char* group);
+    //   hand:   the hand holding the weapon
+    void Kick(const char* weapon, const char* group, const char* hand);
 
     // Charge-up rumble, fraction 0..1. Each call rumbles for 100 ms, so the
     // script must keep calling (it does, every 50 ms). fraction <= 0 stops.
-    void Charge(float fraction);
+    void Charge(float fraction, const char* hand);
+
+    // One rumble pulse on all devices (Titan weapons instead of a kick).
+    //   power:   0..1 (below 0.5 only the small motor runs)
+    //   seconds: clamped to 0.03 .. 2.0 (0 would mean endless in the SDK)
+    void Rumble(float power, float seconds);
 
     // Stops rumble and drops waiting kicks (death, level unload).
     void Stop();

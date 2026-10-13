@@ -1,34 +1,25 @@
 // tf2vr_pt_client.nut - ProTube / ProVolver force feedback (client, campaign only).
 //
-// Shot and charge detection ported from PurplePeanut00's titanfall2-vr-provolver
-// (pvbridge_client.nut 0.3.3, https://github.com/PurplePeanut00/titanfall2-vr-provolver):
+// Shot and charge detection and the kick/rumble values are based on
+// PurplePeanut00's titanfall2-vr-provolver
+// (https://github.com/PurplePeanut00/titanfall2-vr-provolver). Thanks!
 //
-//   MIT License, Copyright (c) 2026 Titanfall 2 VR ProVolver Bridge contributors
-//   Permission is hereby granted, free of charge, to any person obtaining a copy
-//   of this software and associated documentation files (the "Software"), to deal
-//   in the Software without restriction, including without limitation the rights
-//   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-//   copies of the Software, and to permit persons to whom the Software is
-//   furnished to do so, subject to the following conditions:
-//   The above copyright notice and this permission notice shall be included in all
-//   copies or substantial portions of the Software.
-//   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-//   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-//   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-//   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-//   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-//   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-//   SOFTWARE.
-//
-// Changes for this mod: the log-file protocol ([PVBRIDGE/1] print lines read by
-// an external bridge program) is replaced by direct calls into the plugin:
-//   PT_Kick( weaponClass, group )  group "full" = 255 (shotguns), "heavy" = slow
-//                                  start, others adaptive (see src/protube.h)
-//   PT_Charge( fraction )          100 ms rumble per call, <= 0 stops
-// The plugin owns the device and the kick-power scheduling.
+// Calls into the plugin (see src/protube.h):
+//   PT_Kick( weaponClass, group, hand )  pilot weapons; group "full" = 255
+//                                  (shotguns), "heavy" = slow start, others adaptive
+//   PT_Rumble( power, seconds )    Titan weapons: a rumble instead of a kick
+//   PT_Charge( fraction, hand )    charge-up rumble, 100 ms per call, <= 0 stops
+// hand is "right" or "left" (from the VR mod's TF2VR_WeaponHand()). With two
+// devices the plugin sends to that hand's device, with one device to it anyway.
 //
 // This file is independent of the bHaptics scripts: to remove ProTube support,
 // delete it and its entry in mod.json.
+
+// Titan weapons rumble instead of kicking (power 0..1; from 0.5 up the big motor runs).
+const float PT_TITAN_SHOT_POWER   = 0.8
+const float PT_TITAN_SHOT_TIME    = 0.12
+const float PT_TITAN_ROCKET_POWER = 1.0
+const float PT_TITAN_ROCKET_TIME  = 0.35
 
 global function TF2VR_PT_ClientInit
 
@@ -88,9 +79,15 @@ bool function PT_RocketOrdnance( string name )
 		|| name == "mp_titanweapon_dumbfire_rockets"
 }
 
+// The hand holding the weapon (main hand when held with both hands).
+string function PT_Hand()
+{
+	return TF2VR_WeaponHand() == 0 ? "left" : "right"
+}
+
 void function PT_Emit( string group, entity weapon )
 {
-	PT_Kick( weapon.GetWeaponClassName(), group )
+	PT_Kick( weapon.GetWeaponClassName(), group, PT_Hand() )
 }
 
 // Only known primary charge weapons: shields/heat weapons use this API too,
@@ -98,7 +95,7 @@ void function PT_Emit( string group, entity weapon )
 void function PT_StopCharge()
 {
 	if ( file.chargeActive )
-		PT_Charge( 0.0 )
+		PT_Charge( 0.0, "" )
 	file.chargeActive = false
 	file.nextChargeSample = 0.0
 }
@@ -127,7 +124,7 @@ void function PT_UpdateCharge( entity player, entity weapon, bool fired )
 	// Each PT_Charge rumbles 100 ms; refresh every 50 ms while charging.
 	if ( !file.chargeActive || Time() >= file.nextChargeSample )
 	{
-		PT_Charge( fraction )
+		PT_Charge( fraction, PT_Hand() )
 		file.chargeActive = true
 		file.nextChargeSample = Time() + 0.05
 	}
@@ -195,9 +192,15 @@ void function PT_Watch()
 						&& attack > attacks[ active ] + 0.001 && attack > now
 				}
 			}
-			if ( fired )
-				PT_Emit( owner.IsTitan() ? "titan" : PT_Group( active.GetWeaponClassName() ), active )
+			// Charge first: its stop must not cut off the shot's rumble.
 			PT_UpdateCharge( owner, active, fired )
+			if ( fired )
+			{
+				if ( owner.IsTitan() )
+					PT_Rumble( PT_TITAN_SHOT_POWER, PT_TITAN_SHOT_TIME )
+				else
+					PT_Emit( PT_Group( active.GetWeaponClassName() ), active )
+			}
 			primary = active
 		}
 		else
@@ -226,7 +229,7 @@ void function PT_Watch()
 		attacks = nextAttacks
 		charges = nextCharges
 
-		// Titan shoulder rockets: one kick at the start of each salvo.
+		// Titan shoulder rockets: one rumble at the start of each salvo.
 		if ( !owner.IsTitan() )
 		{
 			secondary = null
@@ -251,7 +254,7 @@ void function PT_Watch()
 			if ( spent || cooldownBegan )
 			{
 				if ( now - lastRocket > 3.0 )
-					PT_Emit( "titan_rockets", ordnance )
+					PT_Rumble( PT_TITAN_ROCKET_POWER, PT_TITAN_ROCKET_TIME )
 				lastRocket = now
 			}
 		}

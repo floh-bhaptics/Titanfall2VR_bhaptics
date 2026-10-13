@@ -10,8 +10,9 @@
 //   void BH_Debug( string message )    // plugin log, Debug level
 //   void BH_Warn( string message )     // plugin log, Warn level
 //
-//   void PT_Kick( string weaponClass, string group )  // ProTube recoil, see protube.h
-//   void PT_Charge( float fraction )                  // ProTube charge rumble, 100 ms per call
+//   void PT_Kick( string weaponClass, string group, string hand )  // ProTube recoil, see protube.h
+//   void PT_Charge( float fraction, string hand )   // ProTube charge rumble, 100 ms per call
+//   void PT_Rumble( float power, float seconds )      // ProTube rumble pulse (Titan weapons)
 //   void PT_Stop()
 //   bool PT_IsAvailable()                             // ProTube DLL present
 //

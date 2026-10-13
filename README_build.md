@@ -153,8 +153,24 @@ independent of bHaptics: both can be used at the same time, or either alone.
   Bluetooth call can't delay the vest and vice versa.
 - `InitPistol()` puts the connected devices into the channels `pistol1`,
   `pistol2`, `rifleButt`, `rifleBolt`, `other`, `vest`, in the order Windows
-  finds them. We send to channel 0 (`all`), so every connected device gets
-  every effect. No left/right routing yet.
+  finds them. The worker then reads `ListChannels()` (every second for 20 s,
+  then every 5 s up to 2 min) until `pistol1` and `pistol2` are both taken:
+  - **One device:** everything goes to channel 0 (`all`). Nothing is saved.
+  - **Two devices:** right hand = channel 4 (`pistol1`), left hand = channel 5
+    (`pistol2`). Saved as `<TF2VR>\UserData\right.pro` / `left.pro`
+    (plain UTF-8 text with the device name, e.g. `ForceTubeVR 616241100`),
+    the same format as Astienth's and floh's earlier ProTube mods. On later
+    starts the saved devices are put back into channels 4/5 with
+    `ClearChannel`/`AddToChannel`. If the saved names don't match the
+    connected devices, the files are rewritten.
+  - **`sameHandRight.txt` / `sameHandLeft.txt`** in `UserData`: both devices
+    act as that hand (channel 0); kicks from the other hand are skipped.
+  - Kicks and charge rumble follow `TF2VR_WeaponHand()`; Titan rumble always
+    goes to channel 0. The devices buzz once they are sorted (right once,
+    left twice), so players can check the assignment.
+  - `ListChannels()` returns a `CoTaskMemAlloc`'d string (the DLL imports only
+    that from ole32, and C# interop frees it the same way), so we
+    `CoTaskMemFree` it.
 - Kick power (ported from the ProVolver bridge's scheduler): shotguns
   (`group "full"`) always 255. Other weapons use the SDK's `TempoToKickPower()`
   with a recovery time adapted to the fire rate: start 130 ms (`"heavy"`) or
@@ -177,7 +193,8 @@ independent of bHaptics: both can be used at the same time, or either alone.
 
 ProTube log lines (all `[BHAPTICS]`): `ProTube SDK loaded`, or
 `ProTube support off (...not found)`; with Debug level also
-`ProTube kick <weapon> power <n> recovery <ms>` per kick and
+`ProTube kick <weapon> power <n> recovery <ms> channel <c>` per kick,
+`ProTube channels: {...}` whenever the SDK's channel list changes, and
 `ProTube rumble power <n> for <ms> ms` per Titan shot.
 
 ## Threading
@@ -191,7 +208,8 @@ Titan footsteps and shoulder rocket detection use techniques from the
 [Titanfall2-SimHub-Motion-Addon](https://github.com/nicotrial/Titanfall2-SimHub-Motion-Addon)
 by nicotrial. ProTube shot and charge detection comes from
 [titanfall2-vr-provolver](https://github.com/PurplePeanut00/titanfall2-vr-provolver)
-by PurplePeanut00.
+by PurplePeanut00. The dual wield files follow the format of Astienth's
+ProTube mods ([GunmanContracts_Provolver](https://github.com/Astienth/GunmanContracts_Provolver)).
 
 ## Script API (natives from the plugin)
 
@@ -205,8 +223,8 @@ bool BH_IsConnected()
 void BH_Debug( string message )   // plugin log, only with Level::Debug
 void BH_Warn( string message )
 
-void PT_Kick( string weaponClass, string group )   // group: "full", "heavy", or other
-void PT_Charge( float fraction )                   // 0..1, 100 ms pulse, <= 0 stops
+void PT_Kick( string weaponClass, string group, string hand )  // group: "full", "heavy", or other
+void PT_Charge( float fraction, string hand )      // 0..1, 100 ms pulse, <= 0 stops
 void PT_Rumble( float power, float seconds )       // 0..1, 0.03..2 s (Titan weapons)
 void PT_Stop()
 bool PT_IsAvailable()                              // ProTube DLL found
