@@ -116,7 +116,7 @@ Delete `TF2VR\plugins\Titanfall2VR_bhaptics.dll`,
 
 ## Credits
 
-ProTube support is based on
+ProTube support is loosely inspired by 
 [titanfall2-vr-provolver](https://github.com/PurplePeanut00/titanfall2-vr-provolver)
 by PurplePeanut00. The dual wield setup follows the format used by Astienth's
 ProTube mods, for example
