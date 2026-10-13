@@ -76,6 +76,7 @@ if exist "%PKG_DIR%" rmdir /s /q "%PKG_DIR%"
 if exist "%PKG_ZIP%" del /q "%PKG_ZIP%"
 xcopy /Y /Q "$(TargetPath)" "%PKG_DIR%\plugins\" &gt;nul || (echo ERROR: packaging failed ^(plugin^) &amp; exit /b 1)
 xcopy /Y /Q "$(ProjectDir)lib\bhaptics\bhaptics_library.dll" "%PKG_DIR%\plugins\lib\" &gt;nul || (echo ERROR: packaging failed ^(bhaptics_library.dll^) &amp; exit /b 1)
+xcopy /Y /Q "$(ProjectDir)lib\protube\ForceTubeVR_API_x64.dll" "%PKG_DIR%\plugins\lib\" &gt;nul || (echo ERROR: packaging failed ^(ForceTubeVR_API_x64.dll^) &amp; exit /b 1)
 xcopy /Y /Q /E /I "$(ProjectDir)mod\Titanfall2VR_bhaptics" "%PKG_DIR%\mods\Titanfall2VR_bhaptics\" &gt;nul || (echo ERROR: packaging failed ^(mod folder^) &amp; exit /b 1)
 tar -a -c -f "%PKG_ZIP%" -C "%PKG_DIR%" plugins mods || (echo ERROR: could not create "%PKG_ZIP%" &amp; exit /b 1)
 echo Packaged "%PKG_ZIP%"
@@ -98,6 +99,11 @@ if errorlevel 1 (
 xcopy /Y /Q /D "$(ProjectDir)lib\bhaptics\bhaptics_library.dll" "%PROFILE_DIR%\plugins\lib\"
 if errorlevel 1 (
   echo ERROR: Could not copy bhaptics_library.dll
+  exit /b 1
+)
+xcopy /Y /Q /D "$(ProjectDir)lib\protube\ForceTubeVR_API_x64.dll" "%PROFILE_DIR%\plugins\lib\"
+if errorlevel 1 (
+  echo ERROR: Could not copy ForceTubeVR_API_x64.dll
   exit /b 1
 )
 xcopy /Y /Q /E /I "$(ProjectDir)mod\Titanfall2VR_bhaptics" "%PROFILE_DIR%\mods\Titanfall2VR_bhaptics\"
@@ -142,6 +148,7 @@ if exist "%PKG_DIR%" rmdir /s /q "%PKG_DIR%"
 if exist "%PKG_ZIP%" del /q "%PKG_ZIP%"
 xcopy /Y /Q "$(TargetPath)" "%PKG_DIR%\plugins\" &gt;nul || (echo ERROR: packaging failed ^(plugin^) &amp; exit /b 1)
 xcopy /Y /Q "$(ProjectDir)lib\bhaptics\bhaptics_library.dll" "%PKG_DIR%\plugins\lib\" &gt;nul || (echo ERROR: packaging failed ^(bhaptics_library.dll^) &amp; exit /b 1)
+xcopy /Y /Q "$(ProjectDir)lib\protube\ForceTubeVR_API_x64.dll" "%PKG_DIR%\plugins\lib\" &gt;nul || (echo ERROR: packaging failed ^(ForceTubeVR_API_x64.dll^) &amp; exit /b 1)
 xcopy /Y /Q /E /I "$(ProjectDir)mod\Titanfall2VR_bhaptics" "%PKG_DIR%\mods\Titanfall2VR_bhaptics\" &gt;nul || (echo ERROR: packaging failed ^(mod folder^) &amp; exit /b 1)
 tar -a -c -f "%PKG_ZIP%" -C "%PKG_DIR%" plugins mods || (echo ERROR: could not create "%PKG_ZIP%" &amp; exit /b 1)
 echo Packaged "%PKG_ZIP%"
@@ -166,6 +173,11 @@ if errorlevel 1 (
   echo ERROR: Could not copy bhaptics_library.dll
   exit /b 1
 )
+xcopy /Y /Q /D "$(ProjectDir)lib\protube\ForceTubeVR_API_x64.dll" "%PROFILE_DIR%\plugins\lib\"
+if errorlevel 1 (
+  echo ERROR: Could not copy ForceTubeVR_API_x64.dll
+  exit /b 1
+)
 xcopy /Y /Q /E /I "$(ProjectDir)mod\Titanfall2VR_bhaptics" "%PROFILE_DIR%\mods\Titanfall2VR_bhaptics\"
 if errorlevel 1 (
   echo ERROR: Could not copy the mod folder
@@ -179,6 +191,7 @@ echo Deployed to %PROFILE_DIR%</Command>
     <ClInclude Include="src\log.h" />
     <ClInclude Include="src\haptics.h" />
     <ClInclude Include="src\squirrel.h" />
+    <ClInclude Include="src\protube.h" />
     <ClInclude Include="lib\bhaptics_wrapper.h" />
   </ItemGroup>
   <ItemGroup>
@@ -186,12 +199,15 @@ echo Deployed to %PROFILE_DIR%</Command>
     <ClCompile Include="src\log.cpp" />
     <ClCompile Include="src\haptics.cpp" />
     <ClCompile Include="src\squirrel.cpp" />
+    <ClCompile Include="src\protube.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="mod\Titanfall2VR_bhaptics\mod.json" />
     <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_client.nut" />
     <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_missiles_client.nut" />
     <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_server.nut" />
+    <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_pt_client.nut" />
+    <None Include="lib\protube\README.txt" />
     <None Include="README.md" />
     <None Include="README_build.md" />
   </ItemGroup>

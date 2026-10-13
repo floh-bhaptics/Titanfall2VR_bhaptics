@@ -2,10 +2,10 @@
 
 For players: see `README.md` (installation only). This file is for development.
 
-bHaptics support for CircuitLord's Titanfall 2 VR mod, built as a Northstar
-plugin (native DLL) plus a small Northstar mod (Squirrel scripts).
+bHaptics and ProTube (ProVolver) support for CircuitLord's Titanfall 2 VR mod,
+built as a Northstar plugin (native DLL) plus a small Northstar mod (Squirrel scripts).
 
-Current state (v0.6.0): the plugin connects to the bHaptics Player, plays a
+Current state (v0.6.1): the plugin connects to the bHaptics Player, plays a
 heartbeat on startup, and gives the game scripts `BH_*` functions. The mod's
 scripts use them for damage, health, death, movement, Titan events, recoil,
 explosions and Titan melee.
@@ -25,14 +25,16 @@ G:\SteamLibrary\steamapps\common\Titanfall2\
    │  ├─ Titanfall2VR.dll              (installer, the VR mod itself)
    │  ├─ Titanfall2VR_bhaptics.dll     ← this project
    │  └─ lib\                          dependency folder, NOT loaded as plugins
-   │     └─ bhaptics_library.dll       ← bHaptics SDK
+   │     ├─ bhaptics_library.dll       ← bHaptics SDK
+   │     └─ ForceTubeVR_API_x64.dll    ← ProTube SDK (optional)
    ├─ mods\                            Northstar mods (scripts, assets)
    │  ├─ Titanfall2VR.Cockpit\         (installer)
    │  └─ Titanfall2VR_bhaptics\        ← this project's mod
    │     ├─ mod.json
    │     └─ mod\scripts\vscripts\
    │        ├─ tf2vr_bh_client.nut     client hooks (damage, health, spawn, embark)
-   │        └─ tf2vr_bh_server.nut     server hooks (death, shield, movement, Titan)
+   │        ├─ tf2vr_bh_server.nut     server hooks (death, shield, movement, Titan)
+   │        └─ tf2vr_pt_client.nut     ProTube recoil and charge rumble
    └─ logs\nslog<date>.txt             Northstar log, our lines start with [BHAPTICS]
 ```
 
@@ -137,6 +139,41 @@ Note: the game's Squirrel compiler refuses to pass typed callbacks through
 `var` parameters, so hooks can't be looked up by name at runtime. They are
 called directly.
 
+## ProTube (ProVolver)
+
+Recoil kicks and charge-up rumble for ProTube devices (ProVolver, ForceTube),
+independent of bHaptics: both can be used at the same time, or either alone.
+
+- `src/protube.cpp` loads `plugins\lib\ForceTubeVR_API_x64.dll` at runtime
+  (`LoadLibrary`/`GetProcAddress`, no wrapper or import lib). If the DLL is
+  missing, ProTube support is off and `PT_IsAvailable()` returns false; the
+  script then doesn't start. The DLL is never unloaded, the SDK keeps its own
+  threads until the game exits. Source, hash and signatures: `lib\protube\README.txt`.
+- Same worker-thread model as bHaptics, but a separate worker, so a stuck
+  Bluetooth call can't delay the vest and vice versa.
+- `InitPistol()` assigns the first paired device to channel 4 (`pistol1`).
+  One device only, no left/right routing: the active weapon drives it.
+- Kick power (ported from the ProVolver bridge's scheduler): shotguns
+  (`group "full"`) always 255. Other weapons use the SDK's `TempoToKickPower()`
+  with a recovery time adapted to the fire rate: start 130 ms (`"heavy"`) or
+  60 ms, after two shots the fastest of the last six intervals minus 8 ms,
+  clamped to 50-130 ms. A kick that arrives while the device is still
+  recovering waits up to 40 ms, then it's dropped.
+- Charge rumble: Charge Rifle (`mp_weapon_defender`, attack held) and Plasma
+  Railgun (`mp_titanweapon_sniper`, aiming). Power 32-255 by charge. Every
+  `PT_Charge()` call is a 100 ms pulse; the script refreshes it every 50 ms,
+  so it stops by itself if the script stops (pause, load). Never pass 0 s to
+  `RumbleChannel`: that means endless rumble.
+- Detection in `tf2vr_pt_client.nut` is PurplePeanut00's script (MIT), with the
+  log-file output replaced by `PT_*` calls. It tracks the magazines of all
+  main weapons, including holstered ones, so the first shot right after a
+  weapon switch is caught. To drop ProTube support, delete that file and its
+  `mod.json` entry (and the DLL).
+
+ProTube log lines (all `[BHAPTICS]`): `ProTube SDK loaded`, or
+`ProTube support off (...not found)`; with Debug level also
+`ProTube kick <weapon> power <n> recovery <ms>` per kick.
+
 ## Threading
 
 All bHaptics SDK calls run on one worker thread (`src/haptics.cpp`). The game
@@ -146,7 +183,9 @@ game. Slow SDK calls (>100 ms) and hangs (>2 s) are logged as warnings.
 
 Titan footsteps and shoulder rocket detection use techniques from the
 [Titanfall2-SimHub-Motion-Addon](https://github.com/nicotrial/Titanfall2-SimHub-Motion-Addon)
-by nicotrial.
+by nicotrial. ProTube shot and charge detection comes from
+[titanfall2-vr-provolver](https://github.com/PurplePeanut00/titanfall2-vr-provolver)
+by PurplePeanut00 (MIT, license text in `tf2vr_pt_client.nut`).
 
 ## Script API (natives from the plugin)
 
@@ -159,6 +198,11 @@ void BH_PlayParam( string eventName, float intensity, float duration, float angl
 bool BH_IsConnected()
 void BH_Debug( string message )   // plugin log, only with Level::Debug
 void BH_Warn( string message )
+
+void PT_Kick( string weaponClass, string group )   // group: "full", "heavy", or other
+void PT_Charge( float fraction )                   // 0..1, 100 ms pulse, <= 0 stops
+void PT_Stop()
+bool PT_IsAvailable()                              // ProTube DLL found
 ```
 
 The natives are registered through the game's own Squirrel registration
@@ -168,7 +212,7 @@ function (offsets from NorthstarLauncher, see `src/squirrel.cpp`).
 
 With `Level::Debug`, the log should show:
 
-1. `Registered 5 BH_* natives in SERVER VM` and `... in CLIENT VM` on level load.
+1. `Registered 9 BH_*/PT_* natives in SERVER VM` and `... in CLIENT VM` on level load.
 2. `[SERVER script] server script init` and `[CLIENT script] client script init`.
 3. No `COMPILE ERROR` lines. The hooks come from Northstar's multiplayer
    scripts; if one doesn't exist in the campaign, the game names it in a
@@ -184,6 +228,8 @@ With `Level::Debug`, the log should show:
 | No `[BHAPTICS]` lines at all | Plugin not loaded: check `TF2VR\plugins\`, and that the game was started via the TF2VR launcher, not plain Steam |
 | `bHaptics disabled: could not load bhaptics_library.dll (Win32 error 126)` | DLL missing in `plugins\lib\`, or the Visual C++ 2015-2022 x64 runtime is not installed |
 | `bHaptics Player still not reachable` | Player not running; the plugin keeps trying and connects when it starts |
+| `ProTube disabled: could not load ForceTubeVR_API_x64.dll (Windows error 126)` | Visual C++ 2015-2022 x64 runtime missing |
+| `ProTube kick ...` logged but nothing felt | ProVolver off, not paired in Windows Bluetooth, or ProTube Companion still running (close it) |
 | `Play '...'` logged but nothing felt | Event name missing or misspelled in the workspace, or the device isn't connected (see the `Devices:` line) |
 | `client script loaded, native plugin NOT loaded` | Mod loaded but plugin missing or failed: check the lines above it |
 
@@ -198,11 +244,13 @@ src\
   plugin.cpp     Northstar entry point: CreateInterface, PluginId, callbacks
   northstar.h    minimal mirror of the Northstar plugin ABI
   haptics.cpp    bHaptics connection lifecycle, PlaybackHaptics(), startup heartbeat
-  squirrel.cpp   BH_* natives, registered in the CLIENT and SERVER script VMs
+  protube.cpp    ProTube SDK loading, kick scheduler, charge rumble
+  squirrel.cpp   BH_* and PT_* natives, registered in the CLIENT and SERVER script VMs
   log.cpp        logging into the Northstar console/log
 lib\
   BHapticsWrapper.lib, bhaptics_wrapper.h
   bhaptics\bhaptics_library.dll, library.h
+  protube\ForceTubeVR_API_x64.dll, README.txt
 mod\Titanfall2VR_bhaptics\   Northstar mod, copied to TF2VR\mods\
 ```
 

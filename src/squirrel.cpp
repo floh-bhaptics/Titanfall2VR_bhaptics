@@ -1,5 +1,5 @@
 //
-// squirrel.cpp - BH_* natives for the CLIENT and SERVER Squirrel VMs.
+// squirrel.cpp - BH_* and PT_* natives for the CLIENT and SERVER Squirrel VMs.
 //
 // Northstar's plugin API hands us the CSquirrelVM on creation but no API to
 // register functions, so we call the game's own registration function
@@ -14,6 +14,7 @@
 
 #include "squirrel.h"
 #include "haptics.h"
+#include "protube.h"
 #include "log.h"
 
 #include <cstddef>
@@ -188,6 +189,37 @@ namespace
         return SQRESULT_NULL;
     }
 
+    // ---- ProTube natives ----
+
+    template <int Ctx>
+    SQRESULT Native_PtKick(HSQUIRRELVM vm)
+    {
+        const Api& api = g_api[Ctx];
+        protube::Kick(api.getString(vm, 1), api.getString(vm, 2));
+        return SQRESULT_NULL;
+    }
+
+    template <int Ctx>
+    SQRESULT Native_PtCharge(HSQUIRRELVM vm)
+    {
+        protube::Charge(g_api[Ctx].getFloat(vm, 1));
+        return SQRESULT_NULL;
+    }
+
+    template <int Ctx>
+    SQRESULT Native_PtStop(HSQUIRRELVM)
+    {
+        protube::Stop();
+        return SQRESULT_NULL;
+    }
+
+    template <int Ctx>
+    SQRESULT Native_PtIsAvailable(HSQUIRRELVM vm)
+    {
+        g_api[Ctx].pushBool(vm, protube::IsAvailable() ? 1 : 0);
+        return SQRESULT_NOTNULL;
+    }
+
     // ---- Registration table ----
 
     struct NativeDef
@@ -214,6 +246,14 @@ namespace
           "Write to the bHaptics plugin log (debug level)", TF2VR_BH_NATIVE(Native_Debug) },
         { "BH_Warn",        "void", eSQReturnType::Default, "string message",
           "Write a warning to the bHaptics plugin log", TF2VR_BH_NATIVE(Native_Warn) },
+        { "PT_Kick",        "void", eSQReturnType::Default, "string weaponClass, string group",
+          "ProTube recoil kick; group: full (255), heavy, or anything else (adaptive power)", TF2VR_BH_NATIVE(Native_PtKick) },
+        { "PT_Charge",      "void", eSQReturnType::Default, "float fraction",
+          "ProTube charge rumble for 100 ms (0..1); call every 50 ms, <= 0 stops", TF2VR_BH_NATIVE(Native_PtCharge) },
+        { "PT_Stop",        "void", eSQReturnType::Default, "",
+          "Stop ProTube rumble and drop waiting kicks", TF2VR_BH_NATIVE(Native_PtStop) },
+        { "PT_IsAvailable", "bool", eSQReturnType::Boolean, "",
+          "True if the ProTube library was found", TF2VR_BH_NATIVE(Native_PtIsAvailable) },
     };
 
 #undef TF2VR_BH_NATIVE
@@ -255,7 +295,7 @@ namespace squirrel
             g_api[ctx].registerFunc(vm, &reg, 1);
         }
 
-        logging::Debug("Registered %zu BH_* natives in %s VM", kNativeCount, ContextName(ctx));
+        logging::Debug("Registered %zu BH_*/PT_* natives in %s VM", kNativeCount, ContextName(ctx));
     }
 
     void OnVmDestroying(ns::CSquirrelVM* vm)
@@ -268,6 +308,7 @@ namespace squirrel
         {
             // Level unload / quit to menu: cut anything still playing.
             haptics::StopAll();
+            protube::Stop();
         }
     }
 }

@@ -1,13 +1,17 @@
 # Titanfall2VR_bhaptics
 
-bHaptics support for CircuitLord's [Titanfall 2 VR mod](https://github.com/CircuitLord/CircuitLordVRModInstaller).
+bHaptics and ProTube (ProVolver) support for CircuitLord's [Titanfall 2 VR mod](https://github.com/CircuitLord/CircuitLordVRModInstaller).
 
 ## Requirements
 
 - Titanfall 2 VR, installed with CircuitLord's installer. The installer
   creates a `TF2VR` folder inside your Titanfall 2 game folder.
-- [bHaptics Player](https://www.bhaptics.com/software/player/) installed,
-  running, and your bHaptics devices connected.
+- For bHaptics: [bHaptics Player](https://www.bhaptics.com/software/player/)
+  installed, running, and your bHaptics devices connected.
+- For a ProTube ProVolver: the ProVolver paired in Windows Bluetooth and
+  switched on. Close ProTube Companion before playing.
+
+Either one works alone, or both together.
 
 ## Installation
 
@@ -29,12 +33,15 @@ TF2VR\
 ├─ plugins\
 │  ├─ Titanfall2VR_bhaptics.dll
 │  └─ lib\
-│     └─ bhaptics_library.dll
+│     ├─ bhaptics_library.dll
+│     └─ ForceTubeVR_API_x64.dll
 └─ mods\
    └─ Titanfall2VR_bhaptics\
 ```
 
-You should feel a heartbeat shortly after the game starts.
+With bHaptics, you should feel a heartbeat shortly after the game starts.
+The ProVolver kicks on every shot, and rumbles while you charge the Charge
+Rifle or the Titan's Plasma Railgun.
 
 Updates of the VR mod through CircuitLord's installer don't touch these
 files. To update this mod, unpack the new zip the same way and allow
@@ -43,7 +50,8 @@ overwriting.
 ## Uninstalling
 
 Delete `TF2VR\plugins\Titanfall2VR_bhaptics.dll`,
-`TF2VR\plugins\lib\bhaptics_library.dll` and the folder
+`TF2VR\plugins\lib\bhaptics_library.dll`,
+`TF2VR\plugins\lib\ForceTubeVR_API_x64.dll` and the folder
 `TF2VR\mods\Titanfall2VR_bhaptics`.
 
 ## Troubleshooting
@@ -53,5 +61,15 @@ Delete `TF2VR\plugins\Titanfall2VR_bhaptics.dll`,
   CircuitLord's installer, not directly from Steam.
 - **Still nothing:** check the newest log file in `TF2VR\logs`. Lines from
   this mod start with `[BHAPTICS]` and usually say what went wrong.
-- **"Could not load bhaptics_library.dll":** install the
+- **ProVolver doesn't kick:** switch it on before starting the game, check
+  that it's paired in Windows Bluetooth, and close ProTube Companion.
+- **"Could not load bhaptics_library.dll" or "ForceTubeVR_API_x64.dll":** install the
   [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe).
+
+## Credits
+
+ProTube support is based on
+[titanfall2-vr-provolver](https://github.com/PurplePeanut00/titanfall2-vr-provolver)
+by PurplePeanut00. Titan footstep and shoulder rocket detection use techniques
+from nicotrial's
+[Titanfall2-SimHub-Motion-Addon](https://github.com/nicotrial/Titanfall2-SimHub-Motion-Addon).

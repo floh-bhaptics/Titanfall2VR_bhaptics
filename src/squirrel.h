@@ -1,6 +1,6 @@
 #pragma once
 //
-// squirrel.h - registers the BH_* native functions in the game's Squirrel VMs.
+// squirrel.h - registers the BH_* and PT_* native functions in the game's Squirrel VMs.
 //
 // Natives available to scripts (CLIENT and SERVER VM):
 //
@@ -9,6 +9,11 @@
 //   bool BH_IsConnected()
 //   void BH_Debug( string message )    // plugin log, Debug level
 //   void BH_Warn( string message )     // plugin log, Warn level
+//
+//   void PT_Kick( string weaponClass, string group )  // ProTube recoil, see protube.h
+//   void PT_Charge( float fraction )                  // ProTube charge rumble, 100 ms per call
+//   void PT_Stop()
+//   bool PT_IsAvailable()                             // ProTube DLL present
 //
 // Event names are lower-cased by haptics::PlaybackHaptics, so scripts can use CamelCase.
 //

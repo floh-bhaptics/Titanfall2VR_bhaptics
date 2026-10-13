@@ -10,6 +10,7 @@
     <ClInclude Include="src\log.h"><Filter>Source</Filter></ClInclude>
     <ClInclude Include="src\haptics.h"><Filter>Source</Filter></ClInclude>
     <ClInclude Include="src\squirrel.h"><Filter>Source</Filter></ClInclude>
+    <ClInclude Include="src\protube.h"><Filter>Source</Filter></ClInclude>
     <ClInclude Include="lib\bhaptics_wrapper.h"><Filter>Library</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -17,12 +18,15 @@
     <ClCompile Include="src\log.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\haptics.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\squirrel.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\protube.cpp"><Filter>Source</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="mod\Titanfall2VR_bhaptics\mod.json"><Filter>Mod</Filter></None>
     <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_client.nut"><Filter>Mod</Filter></None>
     <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_missiles_client.nut"><Filter>Mod</Filter></None>
     <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_server.nut"><Filter>Mod</Filter></None>
+    <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_pt_client.nut"><Filter>Mod</Filter></None>
+    <None Include="lib\protube\README.txt"><Filter>Library</Filter></None>
     <None Include="README.md" />
     <None Include="README_build.md" />
   </ItemGroup>

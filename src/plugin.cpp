@@ -9,6 +9,7 @@
 #include "northstar.h"
 #include "log.h"
 #include "haptics.h"
+#include "protube.h"
 #include "squirrel.h"
 
 #include <cstring>
@@ -16,7 +17,7 @@
 namespace
 {
     constexpr const char* kPluginName     = "Titanfall2VR_bhaptics";
-    constexpr const char* kPluginVersion  = "1.0.0";
+    constexpr const char* kPluginVersion  = "0.6.1";
     constexpr const char* kLogName        = "BHAPTICS";
     // Squirrel constant for mod.json "PluginDependencies". Must be a valid
     // Squirrel identifier, otherwise Northstar refuses to load the plugin.
@@ -63,14 +64,17 @@ namespace
             logging::Info("%s v%s loaded%s", kPluginName, kPluginVersion, reloaded ? " (reloaded)" : "");
 
             haptics::Startup(g_self);
+            protube::Startup(g_self);
         }
 
         void Finalize() override {}
 
         bool Unload() override
         {
-            const bool stopped = haptics::Shutdown();
-            logging::Debug("%s %s", kPluginName, stopped ? "unloading" : "stays loaded (bHaptics worker busy)");
+            // Both must stop; a busy worker keeps the plugin loaded.
+            const bool ptStopped = protube::Shutdown();
+            const bool stopped   = haptics::Shutdown() && ptStopped;
+            logging::Debug("%s %s", kPluginName, stopped ? "unloading" : "stays loaded (worker busy)");
             return stopped;
         }
 
