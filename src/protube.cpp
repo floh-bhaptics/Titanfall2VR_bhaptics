@@ -37,9 +37,10 @@ namespace
         TempoToKickPowerFn tempoToKickPower = nullptr;
     } g_sdk;
 
-    // InitPistol() assigns the first paired device to the pistol1 channel,
-    // as in the ProVolver bridge.
-    constexpr int kChannel = 4; // pistol1
+    // InitPistol() spreads the connected devices over pistol1, pistol2, rifleButt,
+    // ... in the order Windows finds them. Until left/right routing exists,
+    // channel 0 ("all") sends every effect to every connected device.
+    constexpr int kChannel = 0; // all
 
     // ---- Tuning (values from the ProVolver bridge 0.3.3) ----
     constexpr double kRecoveryFull     = 0.130; // s, "full" and initial "heavy" recovery
@@ -53,12 +54,14 @@ namespace
     constexpr double kKickMaxWait      = 0.040; // s, a waiting kick expires after this
     constexpr float  kRumblePulse      = 0.100f; // s per charge sample, never 0 (= endless)
     constexpr float  kRumbleStop       = 0.010f;
+    constexpr float  kRumbleMin        = 0.030f; // s, shorter pulses aren't felt (SDK docs)
+    constexpr float  kRumbleMax        = 2.000f; // s
     constexpr size_t kMaxQueue         = 32;
     constexpr ULONGLONG kShutdownWait  = 2000; // ms
     constexpr auto   kIdlePoll         = std::chrono::milliseconds(250);
 
     // ---- Commands ----
-    enum class CmdType { Kick, Charge, Stop };
+    enum class CmdType { Kick, Charge, Rumble, Stop };
 
     struct Command
     {
@@ -66,6 +69,7 @@ namespace
         std::string       weapon;
         std::string       group;
         float             fraction = 0.0f;
+        float             seconds  = 0.0f;
         Clock::time_point time;
     };
 
@@ -293,6 +297,18 @@ namespace
                             rumbling = true;
                         }
                         break;
+                    case CmdType::Rumble:
+                    {
+                        const int power = static_cast<int>(cmd.fraction * 255.0f + 0.5f);
+                        if (power <= 0)
+                            break;
+                        const uint8_t p = static_cast<uint8_t>(std::min(power, 255));
+                        const float   t = std::clamp(cmd.seconds, kRumbleMin, kRumbleMax);
+                        g_sdk.rumbleChannel(p, t, kChannel);
+                        rumbling = true;
+                        logging::Debug("ProTube rumble power %u for %.0f ms", p, t * 1000.0f);
+                        break;
+                    }
                     case CmdType::Stop:
                         scheduler.pending.valid = false;
                         stopRumble();
@@ -391,6 +407,18 @@ namespace protube
         Command cmd;
         cmd.type     = CmdType::Charge;
         cmd.fraction = fraction;
+        cmd.time     = Clock::now();
+        PushCommand(std::move(cmd));
+    }
+
+    void Rumble(float power, float seconds)
+    {
+        if (!g_running.load())
+            return;
+        Command cmd;
+        cmd.type     = CmdType::Rumble;
+        cmd.fraction = power;
+        cmd.seconds  = seconds;
         cmd.time     = Clock::now();
         PushCommand(std::move(cmd));
     }

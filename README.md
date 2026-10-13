@@ -40,8 +40,9 @@ TF2VR\
 ```
 
 With bHaptics, you should feel a heartbeat shortly after the game starts.
-The ProVolver kicks on every shot, and rumbles while you charge the Charge
-Rifle or the Titan's Plasma Railgun.
+The ProVolver kicks on every shot, rumbles instead when you fire from a Titan,
+and rumbles while you charge the Charge Rifle or the Titan's Plasma Railgun.
+With several ProTube devices, all of them get every effect for now.
 
 Updates of the VR mod through CircuitLord's installer don't touch these
 files. To update this mod, unpack the new zip the same way and allow

@@ -151,8 +151,10 @@ independent of bHaptics: both can be used at the same time, or either alone.
   threads until the game exits. Source, hash and signatures: `lib\protube\README.txt`.
 - Same worker-thread model as bHaptics, but a separate worker, so a stuck
   Bluetooth call can't delay the vest and vice versa.
-- `InitPistol()` assigns the first paired device to channel 4 (`pistol1`).
-  One device only, no left/right routing: the active weapon drives it.
+- `InitPistol()` puts the connected devices into the channels `pistol1`,
+  `pistol2`, `rifleButt`, `rifleBolt`, `other`, `vest`, in the order Windows
+  finds them. We send to channel 0 (`all`), so every connected device gets
+  every effect. No left/right routing yet.
 - Kick power (ported from the ProVolver bridge's scheduler): shotguns
   (`group "full"`) always 255. Other weapons use the SDK's `TempoToKickPower()`
   with a recovery time adapted to the fire rate: start 130 ms (`"heavy"`) or
@@ -164,15 +166,19 @@ independent of bHaptics: both can be used at the same time, or either alone.
   `PT_Charge()` call is a 100 ms pulse; the script refreshes it every 50 ms,
   so it stops by itself if the script stops (pause, load). Never pass 0 s to
   `RumbleChannel`: that means endless rumble.
-- Detection in `tf2vr_pt_client.nut` is PurplePeanut00's script (MIT), with the
-  log-file output replaced by `PT_*` calls. It tracks the magazines of all
+- Titan weapons rumble instead of kicking (`PT_Rumble`): a short pulse per
+  shot, a longer one at the start of a shoulder rocket salvo. Power and length
+  are constants at the top of `tf2vr_pt_client.nut`.
+- Detection in `tf2vr_pt_client.nut` is based on PurplePeanut00's script, with
+  the log-file output replaced by `PT_*` calls. It tracks the magazines of all
   main weapons, including holstered ones, so the first shot right after a
   weapon switch is caught. To drop ProTube support, delete that file and its
   `mod.json` entry (and the DLL).
 
 ProTube log lines (all `[BHAPTICS]`): `ProTube SDK loaded`, or
 `ProTube support off (...not found)`; with Debug level also
-`ProTube kick <weapon> power <n> recovery <ms>` per kick.
+`ProTube kick <weapon> power <n> recovery <ms>` per kick and
+`ProTube rumble power <n> for <ms> ms` per Titan shot.
 
 ## Threading
 
@@ -185,7 +191,7 @@ Titan footsteps and shoulder rocket detection use techniques from the
 [Titanfall2-SimHub-Motion-Addon](https://github.com/nicotrial/Titanfall2-SimHub-Motion-Addon)
 by nicotrial. ProTube shot and charge detection comes from
 [titanfall2-vr-provolver](https://github.com/PurplePeanut00/titanfall2-vr-provolver)
-by PurplePeanut00 (MIT, license text in `tf2vr_pt_client.nut`).
+by PurplePeanut00.
 
 ## Script API (natives from the plugin)
 
@@ -201,6 +207,7 @@ void BH_Warn( string message )
 
 void PT_Kick( string weaponClass, string group )   // group: "full", "heavy", or other
 void PT_Charge( float fraction )                   // 0..1, 100 ms pulse, <= 0 stops
+void PT_Rumble( float power, float seconds )       // 0..1, 0.03..2 s (Titan weapons)
 void PT_Stop()
 bool PT_IsAvailable()                              // ProTube DLL found
 ```
@@ -212,7 +219,7 @@ function (offsets from NorthstarLauncher, see `src/squirrel.cpp`).
 
 With `Level::Debug`, the log should show:
 
-1. `Registered 9 BH_*/PT_* natives in SERVER VM` and `... in CLIENT VM` on level load.
+1. `Registered 10 BH_*/PT_* natives in SERVER VM` and `... in CLIENT VM` on level load.
 2. `[SERVER script] server script init` and `[CLIENT script] client script init`.
 3. No `COMPILE ERROR` lines. The hooks come from Northstar's multiplayer
    scripts; if one doesn't exist in the campaign, the game names it in a

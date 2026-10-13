@@ -19,3 +19,4 @@ Function signatures used (x64, plain C exports, see ForceTubeVRInterface.cs):
   void    RumbleChannel(uint8_t power, float seconds, int channel);  // 0.0 s = endless!
   uint8_t TempoToKickPower(float seconds);
 Channels: 0 all, 1 rifle, 2 rifleButt, 3 rifleBolt, 4 pistol1, 5 pistol2, 6 other, 7 vest
+The plugin sends everything to channel 0 (all connected devices).
