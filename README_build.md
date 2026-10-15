@@ -126,10 +126,10 @@ All names are lower case, as they must be in the bHaptics portal.
 | `titanfall` | Any Titan (incl. our own) landing after a fast fall, within ~100 m; intensity by distance, directional | client |
 | `timeshift_charge` | "Effect and Cause": the player uses the timeshift device, start of the ~0.5 s wind-up before the jump (`AddCallback_OnTimeShiftAbilityUsed`, in the untyped `tf2vr_bh_timeshift_server.nut`) | server |
 | `timeshift` | "Effect and Cause": the player switches timelines, manual or scripted (position jumps > 1500 units within one frame; past and present are stacked copies of the level). The debug log shows the offset, its z sign tells past from present | client |
-| `draw_primary_l` / `_r` | Primary gun drawn from the shoulder holster, left / right hand (VR mod `tf2vr_draw` command, acked via `tf2vr_gun_ack`) | server + client |
-| `draw_secondary_l` / `_r` | Secondary gun or arc tool drawn from the hip holster | server + client |
-| `grenade_take` | Grenade taken from the chest (`tf2vr_grenade` command, acked via `tf2vr_grenade_ack`) | server |
-| `grenade_store` | Held grenade put back on the chest (`tf2vr_store_grenade` command) | server |
+| `draw_primary_l` / `_r` | Primary gun drawn from the shoulder holster, left / right hand (`tf2vr_gun_ack` gets a new ticket, `tf2vr_gun_slot` = 0). Also when picking up a gun class you already carry | client |
+| `draw_secondary_l` / `_r` | Secondary gun or arc tool drawn from the hip holster (`tf2vr_gun_slot` = 1 or 3) | client |
+| `grenade_take` | Grenade in hand: taken from the chest or picked up (`tf2vr_grenade_ack` gets a new ticket) | client |
+| `grenade_store` | Held grenade put back on the chest (`tf2vr_store_grenade` command, notify callback). Only after a fresh level start with this mod, see the note below the table | server |
 | `grenade_throw` | Grenade thrown (`tf2vr_projectile_ticket` changes) | client |
 | `reload_magazine_out` | Magazine pulled out (`tf2vr_reload_magazine_out` counts up) | client |
 | `reload_magazine_in` | Clip count of the active pilot weapon goes up: magazine inserted (one event per shell for shell-by-shell reloads) | client |
@@ -138,9 +138,21 @@ All names are lower case, as they must be in the bHaptics portal.
 | `titan_flight` | Repeats every 0.5 s while Flight Core is active (active weapon `mp_titanweapon_flightcore_rockets`) | client |
 | `titan_core_ready` | Titan core becomes available (`IsCoreChargeAvailable`) | client |
 | `titan_core_charge` | Repeats every 0.2 s during the core's activation wind-up; intensity 0.3-1.0 follows the core weapon's charge fraction | client |
-| `titan_shield_start` | Vortex shield (incl. Ion's) or Scorch's heat shield goes up: it becomes the Titan's active weapon | client |
+| `titan_shield_start` | Shield used: vortex (incl. Ion's), heat shield, particle wall or gun shield. The ability becomes the active weapon, its ammo drops or its cooldown starts; max. once per second | client |
 | `titan_core_active` | Core starts (`SoulTitanCore_GetExpireTime( soul ) > Time()`) | client |
 | `recoil_titan_rockets` | Own Titan fires shoulder rockets: once at the start of each salvo (ordnance slot: clip drop or cooldown start, then 3 s quiet period). Ordnance fired as the active weapon (Tone's tracker rockets) plays `recoil_titan` instead | client |
+
+**Server callbacks and save games:** continuing from a save restores the
+server script state of that save; Northstar runs no SERVER init callbacks
+then (only CLIENT ones). So server-side hooks (all of `tf2vr_bh_server.nut`
+and `tf2vr_bh_timeshift_server.nut`) only exist in levels that were started
+with the current mod version installed, i.e. after a level transition or a
+chapter start, and in saves made from then on. Client hooks always work.
+That's why most new effects are detected on the client.
+
+Level load: `player_enter_titan` is skipped for the first 3 s after the client
+script starts (levels that begin inside the Titan). `titan_destroyed` is
+skipped once no player is connected (quitting to the menu).
 
 Recoil: shots are detected when the active weapon's magazine count drops
 (no game hook involved). The hand comes from the VR mod's

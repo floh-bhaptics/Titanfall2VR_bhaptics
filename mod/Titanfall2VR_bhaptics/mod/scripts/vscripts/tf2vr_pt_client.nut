@@ -197,7 +197,12 @@ void function PT_Watch()
 			if ( fired )
 			{
 				if ( owner.IsTitan() )
-					PT_Rumble( PT_TITAN_SHOT_POWER, PT_TITAN_SHOT_TIME )
+				{
+					// Abilities (sonar pulse, particle wall, ...) use ammo too, but aren't shots.
+					string firedClass = active.GetWeaponClassName()
+					if ( !( firedClass.len() > 16 && firedClass.slice( 0, 16 ) == "mp_titanability_" ) )
+						PT_Rumble( PT_TITAN_SHOT_POWER, PT_TITAN_SHOT_TIME )
+				}
 				else
 					PT_Emit( PT_Group( active.GetWeaponClassName() ), active )
 			}

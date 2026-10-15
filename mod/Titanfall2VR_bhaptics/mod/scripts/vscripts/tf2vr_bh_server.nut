@@ -40,11 +40,13 @@ void function TF2VR_BH_ServerInit()
 	AddSpawnCallback( "player", BH_OnPlayerEntitySpawned )
 	AddCallback_OnPlayerRespawned( BH_OnPlayerEntitySpawned )
 
-	// VR mod gestures (client commands sent by its native code). Notify
-	// callbacks run after the VR mod's own handler, so its ack convars
-	// already tell whether the action succeeded. Needs Northstar.CustomServers.
-	AddClientCommandNotifyCallback( "tf2vr_draw", BH_OnVrDraw )
-	AddClientCommandNotifyCallback( "tf2vr_grenade", BH_OnVrGrenadeTake )
+	// Grenade put back on the chest: only visible as the VR mod's client
+	// command. Notify callbacks run after the VR mod's own handler (needs
+	// Northstar.CustomServers). Drawing guns and taking grenades are detected
+	// on the client (tf2vr_bh_client.nut).
+	// Note: like every server callback here, this only exists if the level was
+	// started with this mod version; a loaded save restores the server script
+	// state from when it was made.
 	AddClientCommandNotifyCallback( "tf2vr_store_grenade", BH_OnVrGrenadeStore )
 #endif
 }
@@ -180,6 +182,10 @@ void function BH_OnSoulDeath( entity soul, var damageInfo )
 	if ( !IsValid( soul ) )
 		return
 
+	// Quitting to the menu destroys the Titan after the player disconnected.
+	if ( GetPlayerArray().len() == 0 )
+		return
+
 	// Our Titan: either we are in it, or it is BT running as auto-titan.
 	entity titan = soul.GetTitan()
 	bool ours = BH_IsOurPlayer( titan ) || BH_IsOurPlayer( soul.GetBossPlayer() )
@@ -188,27 +194,8 @@ void function BH_OnSoulDeath( entity soul, var damageInfo )
 }
 
 // ===================================================================
-//  VR mod gestures: draw a gun, take / store a grenade on the chest
+//  VR mod gesture: grenade put back on the chest
 // ===================================================================
-
-// "tf2vr_draw <ticket> <slot>": the VR mod sets tf2vr_gun_ack to the ticket
-// once the gun is equipped (to -ticket if it refused). The hand is only known
-// on the client, so the client plays the effect.
-void function BH_OnVrDraw( entity player, array<string> args )
-{
-	if ( args.len() < 2 || GetConVarInt( "tf2vr_gun_ack" ) != args[0].tointeger() )
-		return
-	ServerToClientStringCommand( player, "BH_Draw " + args[1] )
-}
-
-// "tf2vr_grenade <ticket>": grenade taken from the chest, if acked.
-void function BH_OnVrGrenadeTake( entity player, array<string> args )
-{
-	if ( args.len() < 1 || GetConVarInt( "tf2vr_grenade_ack" ) != args[0].tointeger() )
-		return
-	BH_Debug( "grenade: taken from chest" )
-	BH_Play( "grenade_take" )
-}
 
 // "tf2vr_store_grenade <ticket>": held grenade put back on the chest.
 void function BH_OnVrGrenadeStore( entity player, array<string> args )

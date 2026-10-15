@@ -60,6 +60,8 @@ const float BH_TIMESHIFT_MIN_JUMP  = 1500.0
 // Titan flight and core
 const float BH_FLIGHT_INTERVAL     = 0.5  // seconds between "titan_flight" while Flight Core is active
 const float BH_CORE_CHARGE_INTERVAL = 0.2 // seconds between "titan_core_charge" during the core wind-up
+const float BH_SHIELD_DEDUPE       = 1.0  // seconds: one "titan_shield_start" per use
+const float BH_LOAD_QUIET_TIME     = 3.0  // seconds after level load without "player_enter_titan"
 
 struct BH_Projectile
 {
@@ -99,6 +101,9 @@ struct
 	entity recoilWeapon
 	int    recoilClip         = -1
 	// VR mod interaction counters (convars set by the VR mod's native code)
+	float  initTime            = 0.0
+	int    gunAck              = 0
+	int    grenadeAck          = 0
 	int    grenadeThrowTicket  = 0
 	int    reloadMagazineOut   = 0
 	int    reloadEjections     = 0
@@ -113,6 +118,7 @@ void function TF2VR_BH_ClientInit()
 {
 #if TF2VR_BHAPTICS
 	BH_Debug( "client script init" )
+	file.initTime = Time()
 
 	AddCreateTitanCockpitCallback( BH_OnTitanCockpitCreated )
 	AddServerToClientStringCommandCallback( "BH_PlayerKilled", BH_OnPlayerKilledCommand )
@@ -138,9 +144,8 @@ void function TF2VR_BH_ClientInit()
 	AddCreateCallback( "npc_titan", BH_OnNpcTitanCreated )
 	thread BH_TitanfallWatchThread()
 
-	// VR mod interactions: gun drawn from a holster (reported by the server,
-	// see BH_OnDrawCommand), grenade throws and reload steps (VR mod convars).
-	AddServerToClientStringCommandCallback( "BH_Draw", BH_OnDrawCommand )
+	// VR mod interactions: guns drawn from a holster, grenades taken from the
+	// chest, grenade throws and reload steps (VR mod convars).
 	thread BH_InteractionWatchThread()
 
 	// Titan VTOL hover, Flight Core, core ready / wind-up / active.
@@ -319,6 +324,12 @@ void function BH_OnLocalPlayerSpawned( entity player )
 
 void function BH_OnTitanCockpitCreated( entity cockpit, entity player )
 {
+	// Levels that start inside the Titan create the cockpit while loading.
+	if ( Time() - file.initTime < BH_LOAD_QUIET_TIME )
+	{
+		BH_Debug( "player_enter_titan skipped (level load)" )
+		return
+	}
 	BH_Play( "player_enter_titan" )
 }
 
@@ -365,7 +376,12 @@ void function BH_RecoilWatchThread()
 		if ( clip < file.recoilClip )
 		{
 			if ( player.IsTitan() )
-				BH_PlayTitanRecoil( weapon )
+			{
+				// Abilities (sonar pulse, particle wall, ...) briefly become the
+				// active weapon and use ammo too, but they aren't shots.
+				if ( !BH_IsTitanAbility( weapon.GetWeaponClassName() ) )
+					BH_PlayTitanRecoil( weapon )
+			}
 			else
 				BH_PlayRecoil( weapon )
 		}
@@ -878,12 +894,16 @@ void function BH_TimeshiftWatchThread()
 //
 //  CircuitLord's VR mod handles these gestures in its native code and talks
 //  to its scripts through convars and client commands:
-//   - Gun drawn from a holster: the server handles "tf2vr_draw" and acks it
-//     through tf2vr_gun_ack. Our server script listens to that command and
-//     sends "BH_Draw <slot>" here (only real draws, not picking up a gun).
-//     Slot 0 = primary (over the shoulder), 1 = secondary, 3 = arc tool (hip).
-//   - Grenade taken from / put back on the chest: server side, see
-//     tf2vr_bh_server.nut.
+//   - Gun drawn from a holster: the server acks "tf2vr_draw" by setting
+//     tf2vr_gun_ack to the request's ticket (> 0) and tf2vr_gun_slot to the
+//     slot: 0 = primary (over the shoulder), 1 = secondary, 3 = arc tool (hip).
+//     Picking up a gun class you already carry acks the same way.
+//   - Grenade in hand: tf2vr_grenade_ack gets a new ticket (> 0), for chest
+//     grabs and for grenades picked up from the world.
+//   - Grenade put back on the chest: server only, see tf2vr_bh_server.nut.
+//  These are read here on the client because a server script's callbacks
+//  only exist if the level was started with this mod installed: continuing
+//  from a save restores the server script state of that save.
 //   - Grenade thrown: tf2vr_projectile_ticket changes.
 //   - Reload: tf2vr_reload_magazine_out, tf2vr_reload_ejections and
 //     tf2vr_reload_rounds count steps (magazine pulled out, ejected, rounds
@@ -891,17 +911,10 @@ void function BH_TimeshiftWatchThread()
 //  Holstering a gun is not exposed by the VR mod (yet).
 // ===================================================================
 
-void function BH_OnDrawCommand( array<string> args )
-{
-	int slot = args.len() > 0 ? args[0].tointeger() : -1
-	string side = TF2VR_WeaponHand() == 0 ? "l" : "r"
-	string eventName = slot == 0 ? "draw_primary_" + side : "draw_secondary_" + side
-	BH_Debug( "draw: slot " + slot )
-	BH_Play( eventName )
-}
-
 void function BH_InteractionWatchThread()
 {
+	file.gunAck             = GetConVarInt( "tf2vr_gun_ack" )
+	file.grenadeAck         = GetConVarInt( "tf2vr_grenade_ack" )
 	file.grenadeThrowTicket = GetConVarInt( "tf2vr_projectile_ticket" )
 	file.reloadMagazineOut  = GetConVarInt( "tf2vr_reload_magazine_out" )
 	file.reloadEjections    = GetConVarInt( "tf2vr_reload_ejections" )
@@ -910,6 +923,30 @@ void function BH_InteractionWatchThread()
 	while ( true )
 	{
 		WaitFrame()
+
+		int gunAck = GetConVarInt( "tf2vr_gun_ack" )
+		if ( gunAck != file.gunAck )
+		{
+			file.gunAck = gunAck
+			if ( gunAck > 0 )
+			{
+				int slot = GetConVarInt( "tf2vr_gun_slot" )
+				string side = TF2VR_WeaponHand() == 0 ? "l" : "r"
+				BH_Debug( "draw: slot " + slot + " (" + GetConVarString( "tf2vr_gun_name" ) + ")" )
+				BH_Play( slot == 0 ? "draw_primary_" + side : "draw_secondary_" + side )
+			}
+		}
+
+		int grenadeAck = GetConVarInt( "tf2vr_grenade_ack" )
+		if ( grenadeAck != file.grenadeAck )
+		{
+			file.grenadeAck = grenadeAck
+			if ( grenadeAck > 0 )
+			{
+				BH_Debug( "grenade: in hand (ticket " + grenadeAck + ")" )
+				BH_Play( "grenade_take" )
+			}
+		}
 
 		int ticket = GetConVarInt( "tf2vr_projectile_ticket" )
 		if ( ticket != file.grenadeThrowTicket )
@@ -959,9 +996,10 @@ void function BH_InteractionWatchThread()
 //    "titan_core_charge" repeatedly during the activation wind-up (the core
 //    weapon is a charge weapon; intensity follows the charge), and
 //    "titan_core_active" when the core starts.
-//  - Shield: "titan_shield_start" when the vortex shield (incl. Ion's) or
-//    Scorch's heat shield goes up. While held, the shield is the Titan's
-//    active weapon (the VR mod triggers it with the left-grip gesture).
+//  - Shield: "titan_shield_start" when a defensive shield is used: vortex
+//    (incl. Ion's), Scorch's heat shield, Tone's particle wall or Legion's gun
+//    shield. Detected like the hover: the ability becomes the active weapon,
+//    its ammo drops or its cooldown starts (max. once per second).
 // ===================================================================
 
 void function BH_TitanAbilityWatchThread()
@@ -976,6 +1014,10 @@ void function BH_TitanAbilityWatchThread()
 	float  nextCoreCharge   = 0.0
 	bool   wasTitan         = false
 	bool   shieldUp         = false
+	entity shieldWeapon     = null
+	int    shieldClip       = -1
+	float  shieldCooldown   = 0.0
+	float  lastShield       = -999.0
 
 	while ( true )
 	{
@@ -987,7 +1029,8 @@ void function BH_TitanAbilityWatchThread()
 			hoverWeapon = null
 			flying      = false
 			wasTitan    = false
-			shieldUp    = false
+			shieldUp     = false
+			shieldWeapon = null
 			continue
 		}
 
@@ -1037,14 +1080,50 @@ void function BH_TitanAbilityWatchThread()
 		}
 		flying = flightCore
 
-		// ---- Vortex / heat shield ----
-		bool shield = IsValid( activeWeapon ) && BH_IsTitanShieldWeapon( activeWeapon.GetWeaponClassName() )
-		if ( shield && !shieldUp )
+		// ---- Shields: vortex, heat shield, particle wall, gun shield ----
+		entity shieldOffhand = null
+		foreach ( entity offhand in player.GetOffhandWeapons() )
 		{
-			BH_Debug( "titan: shield up (" + activeWeapon.GetWeaponClassName() + ")" )
-			BH_Play( "titan_shield_start" )
+			if ( IsValid( offhand ) && BH_IsTitanShieldWeapon( offhand.GetWeaponClassName() ) )
+				shieldOffhand = offhand
 		}
-		shieldUp = shield
+
+		bool shieldUsed = false
+		bool shieldActive = IsValid( activeWeapon ) && BH_IsTitanShieldWeapon( activeWeapon.GetWeaponClassName() )
+		if ( shieldActive && !shieldUp )
+			shieldUsed = true
+		shieldUp = shieldActive
+
+		if ( shieldOffhand == null )
+		{
+			shieldWeapon = null
+		}
+		else
+		{
+			int   clip     = shieldOffhand.GetWeaponPrimaryClipCount()
+			float cooldown = shieldOffhand.GetNextAttackAllowedTime() - now
+			if ( cooldown < 0.0 )
+				cooldown = 0.0
+
+			if ( shieldOffhand == shieldWeapon )
+			{
+				if ( shieldClip > 0 && clip >= 0 && clip < shieldClip )
+					shieldUsed = true
+				if ( clip == shieldClip && shieldCooldown < 0.05 && cooldown > 0.2 )
+					shieldUsed = true
+			}
+
+			shieldWeapon   = shieldOffhand
+			shieldClip     = clip
+			shieldCooldown = cooldown
+		}
+
+		if ( shieldUsed && now - lastShield > BH_SHIELD_DEDUPE )
+		{
+			BH_Debug( "titan: shield (" + ( IsValid( shieldOffhand ) ? shieldOffhand.GetWeaponClassName() : "?" ) + ")" )
+			BH_Play( "titan_shield_start" )
+			lastShield = now
+		}
 
 		// ---- VTOL hover ----
 		entity hover = null
@@ -1092,9 +1171,17 @@ bool function BH_IsTitanShieldWeapon( string weaponClass )
 		case "mp_titanweapon_vortex_shield":
 		case "mp_titanweapon_vortex_shield_ion":
 		case "mp_titanweapon_heat_shield":
+		case "mp_titanability_particle_wall":
+		case "mp_titanability_gun_shield":
 			return true
 	}
 	return false
+}
+
+// Titan abilities (sonar pulse, particle wall, hover, ...) are not guns.
+bool function BH_IsTitanAbility( string weaponClass )
+{
+	return weaponClass.len() > 16 && weaponClass.slice( 0, 16 ) == "mp_titanability_"
 }
 
 #endif
