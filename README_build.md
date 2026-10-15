@@ -34,6 +34,7 @@ G:\SteamLibrary\steamapps\common\Titanfall2\
    │     └─ mod\scripts\vscripts\
    │        ├─ tf2vr_bh_client.nut     client hooks (damage, health, spawn, embark)
    │        ├─ tf2vr_bh_server.nut     server hooks (death, shield, movement, Titan)
+   │        ├─ tf2vr_bh_timeshift_server.nut  timeshift device (untyped, see file)
    │        └─ tf2vr_pt_client.nut     ProTube recoil and charge rumble
    └─ logs\nslog<date>.txt             Northstar log, our lines start with [BHAPTICS]
 ```
@@ -123,6 +124,8 @@ All names are lower case, as they must be in the bHaptics portal.
 | `titan_melee` | Titan punch or sword swing | client |
 | `titan_footstep` | Own Titan's footfall: walk animation cycle crosses 0.0 / 0.5 while moving on the ground | client |
 | `titanfall` | Any Titan (incl. our own) landing after a fast fall, within ~100 m; intensity by distance, directional | client |
+| `timeshift_charge` | "Effect and Cause": the player uses the timeshift device, start of the ~0.5 s wind-up before the jump (`AddCallback_OnTimeShiftAbilityUsed`, in the untyped `tf2vr_bh_timeshift_server.nut`) | server |
+| `timeshift` | "Effect and Cause": the player switches timelines, manual or scripted (position jumps > 1500 units within one frame; past and present are stacked copies of the level). The debug log shows the offset, its z sign tells past from present | client |
 | `recoil_titan_rockets` | Own Titan fires shoulder rockets: once at the start of each salvo (ordnance slot: clip drop or cooldown start, then 3 s quiet period). Ordnance fired as the active weapon (Tone's tracker rockets) plays `recoil_titan` instead | client |
 
 Recoil: shots are detected when the active weapon's magazine count drops

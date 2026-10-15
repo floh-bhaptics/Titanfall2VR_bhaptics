@@ -206,6 +206,7 @@ echo Deployed to %PROFILE_DIR%</Command>
     <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_client.nut" />
     <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_missiles_client.nut" />
     <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_server.nut" />
+    <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_bh_timeshift_server.nut" />
     <None Include="mod\Titanfall2VR_bhaptics\mod\scripts\vscripts\tf2vr_pt_client.nut" />
     <None Include="lib\protube\README.txt" />
     <None Include="README.md" />

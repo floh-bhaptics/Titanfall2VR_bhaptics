@@ -10,6 +10,9 @@
 // Event names are lower-cased by the plugin before they reach bHaptics.
 
 global function TF2VR_BH_ClientInit
+#if TF2VR_BHAPTICS
+global function BH_TrackProjectile // called from tf2vr_bh_missiles_client.nut
+#endif
 
 #if TF2VR_BHAPTICS
 
@@ -33,7 +36,7 @@ const float BH_STEP_SPEED_FULL     = 118.0 // ~3 m/s: full walking blend
 const float BH_STEP_VERTICAL_MAX   = 79.0  // ~2 m/s: faster vertical motion = not grounded
 const float BH_STEP_BLEND_MIN      = 0.2   // walking * grounded blend needed for a step
 const float BH_STEP_MAX_ADVANCE    = 0.25  // larger cycle jumps = animation switch, not a step
-const float BH_STEP_LEAD_TIME      = 0.1  // seconds: play this much before the footfall
+const float BH_STEP_LEAD_TIME      = 0.25  // seconds: play this much before the footfall
                                            // (converted to a cycle offset from the current animation speed)
 
 // Titanfall: a Titan falling fast and then stopping abruptly.
@@ -47,6 +50,12 @@ const float BH_TITANFALL_MIN_INTENSITY = 0.3
 // until no rocket activity was seen for this long (salvos in testing were
 // >= 5 s apart, detections within one salvo up to ~2 s apart).
 const float BH_ROCKET_SALVO_QUIET  = 3.0
+
+// Timeshift ("Effect and Cause"): past and present are two copies of the level
+// in the same map, and a time jump moves the player between them. Moving this
+// far within one frame can only be such a jump (~38 m; sprinting covers a few
+// units per frame).
+const float BH_TIMESHIFT_MIN_JUMP  = 1500.0
 
 struct BH_Projectile
 {
@@ -119,6 +128,12 @@ void function TF2VR_BH_ClientInit()
 	// are inside, see BH_TitanfallWatchThread).
 	AddCreateCallback( "npc_titan", BH_OnNpcTitanCreated )
 	thread BH_TitanfallWatchThread()
+
+	// Timeline switches, only in the two "Effect and Cause" maps. The device's
+	// wind-up ("timeshift_charge") is played by tf2vr_bh_timeshift_server.nut.
+	string map = GetMapName()
+	if ( map == "sp_hub_timeshift" || map == "sp_timeshift_spoke02" )
+		thread BH_TimeshiftWatchThread()
 #else
 	printt( "[Titanfall2VR_bhaptics] client script loaded, native plugin NOT loaded - haptics disabled" )
 #endif
@@ -418,6 +433,29 @@ string function BH_RecoilGroup( string weaponClass )
 // ===================================================================
 //  12. Explosions
 // ===================================================================
+
+// Method 1: track projectiles from creation until they disappear. When one
+// vanishes near the player, that is where it detonated.
+void function BH_TrackProjectile( entity ent, string weaponName )
+{
+	if ( !IsValid( ent ) )
+		return
+
+	foreach ( BH_Projectile p in file.projectiles )
+	{
+		if ( p.ent == ent )
+			return // already tracked (the callback can fire more than once)
+	}
+
+	BH_Projectile p
+	p.ent         = ent
+	p.lastOrigin  = ent.GetOrigin()
+	p.createdTime = Time()
+	p.weaponName  = weaponName
+	file.projectiles.append( p )
+
+	BH_Debug( "Projectile tracked: " + ent.GetClassName() + " (" + weaponName + ")" )
+}
 
 void function BH_ProjectileWatchThread()
 {
@@ -767,6 +805,49 @@ bool function BH_IsTitanRocketWeapon( string weaponClass )
 			return true
 	}
 	return false
+}
+
+// ===================================================================
+//  Timeshift: timeline switch
+//
+//  Plays "timeshift" whenever the player jumps between past and present,
+//  for manual jumps (after the device's wind-up) as well as scripted ones.
+//  The debug log shows the jump's offset: its height (z) sign tells which
+//  timeline the player arrived in, for separate past/present effects later.
+// ===================================================================
+
+void function BH_TimeshiftWatchThread()
+{
+	BH_Debug( "timeshift: watching for timeline switches" )
+
+	entity lastPlayer = null
+	vector lastOrigin = < 0, 0, 0 >
+
+	while ( true )
+	{
+		WaitFrame()
+
+		entity player = GetLocalClientPlayer()
+		if ( !IsValid( player ) || !IsAlive( player ) )
+		{
+			lastPlayer = null // respawn: start a new baseline
+			continue
+		}
+
+		vector origin = player.GetOrigin()
+		if ( player == lastPlayer )
+		{
+			vector delta = origin - lastOrigin
+			if ( Length( delta ) > BH_TIMESHIFT_MIN_JUMP )
+			{
+				BH_Debug( "timeshift: timeline switch, offset x " + delta.x + " y " + delta.y + " z " + delta.z )
+				BH_Play( "timeshift" )
+			}
+		}
+
+		lastPlayer = player
+		lastOrigin = origin
+	}
 }
 
 #endif
