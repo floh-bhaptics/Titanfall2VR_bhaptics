@@ -61,6 +61,7 @@ const float BH_TIMESHIFT_MIN_JUMP  = 1500.0
 const float BH_FLIGHT_INTERVAL     = 0.5  // seconds between "titan_flight" while Flight Core is active
 const float BH_CORE_CHARGE_INTERVAL = 0.2 // seconds between "titan_core_charge" during the core wind-up
 const float BH_SHIELD_DEDUPE       = 1.0  // seconds: one "titan_shield_start" per use
+const float BH_TACTICAL_DEDUPE     = 1.0  // seconds: one "titan_tactical" per use
 const float BH_LOAD_QUIET_TIME     = 3.0  // seconds after level load without "player_enter_titan"
 
 struct BH_Projectile
@@ -148,7 +149,7 @@ void function TF2VR_BH_ClientInit()
 	// chest, grenade throws and reload steps (VR mod convars).
 	thread BH_InteractionWatchThread()
 
-	// Titan VTOL hover, Flight Core, core ready / wind-up / active.
+	// Titan tactical ability, Flight Core, core ready / wind-up / active, shield.
 	thread BH_TitanAbilityWatchThread()
 
 	// Timeline switches, only in the two "Effect and Cause" maps. The device's
@@ -986,10 +987,10 @@ void function BH_InteractionWatchThread()
 // ===================================================================
 //  Titan abilities: VTOL hover, Flight Core, core charge
 //
-//  - VTOL hover (mp_titanability_hover, Northstar loadout): about 3 s of
-//    hovering with gravity off (server function FlyerHovers). Detected when
-//    the ability is used (its ammo drops or its cooldown starts), like the
-//    shoulder rockets. Plays "titan_hover" once; the pattern can be ~3 s long.
+//  - Tactical ability (slot OFFHAND_TITAN_CENTER, the VR mod's "down" swipe):
+//    sonar pulse, electric smoke, VTOL hover (~3 s), phase dash, ... Detected
+//    when it becomes the active weapon, its ammo drops or its cooldown starts,
+//    like the shoulder rockets. Plays "titan_tactical" once per use.
 //  - Flight Core: while it runs, the Titan's active weapon is
 //    mp_titanweapon_flightcore_rockets. "titan_flight" repeats meanwhile.
 //  - Core: "titan_core_ready" when the core becomes available,
@@ -1004,7 +1005,9 @@ void function BH_InteractionWatchThread()
 
 void function BH_TitanAbilityWatchThread()
 {
-	entity hoverWeapon      = null
+	entity hoverWeapon      = null  // tactical ability weapon (name kept from the hover-only version)
+	bool   tacticalActive   = false
+	float  lastTactical     = -999.0
 	int    hoverClip        = -1
 	float  hoverCooldown    = 0.0
 	bool   flying           = false
@@ -1026,8 +1029,9 @@ void function BH_TitanAbilityWatchThread()
 		entity player = GetLocalClientPlayer()
 		if ( !IsValid( player ) || !IsAlive( player ) || !player.IsTitan() )
 		{
-			hoverWeapon = null
-			flying      = false
+			hoverWeapon    = null
+			tacticalActive = false
+			flying         = false
 			wasTitan    = false
 			shieldUp     = false
 			shieldWeapon = null
@@ -1125,40 +1129,41 @@ void function BH_TitanAbilityWatchThread()
 			lastShield = now
 		}
 
-		// ---- VTOL hover ----
-		entity hover = null
-		foreach ( entity offhand in player.GetOffhandWeapons() )
-		{
-			if ( IsValid( offhand ) && offhand.GetWeaponClassName() == "mp_titanability_hover" )
-				hover = offhand
-		}
-
-		if ( hover == null )
+		// ---- Tactical ability ("down" swipe in the VR mod): sonar pulse,
+		// electric smoke, VTOL hover, ... whatever sits in the tactical slot ----
+		entity tactical = player.GetOffhandWeapon( OFFHAND_TITAN_CENTER )
+		if ( !IsValid( tactical ) )
 		{
 			hoverWeapon = null
 		}
 		else
 		{
-			int   clip     = hover.GetWeaponPrimaryClipCount()
-			float cooldown = hover.GetNextAttackAllowedTime() - now
+			int   clip     = tactical.GetWeaponPrimaryClipCount()
+			float cooldown = tactical.GetNextAttackAllowedTime() - now
 			if ( cooldown < 0.0 )
 				cooldown = 0.0
 
-			if ( hover == hoverWeapon )
+			bool used = tactical == activeWeapon && !tacticalActive
+			if ( tactical == hoverWeapon )
 			{
-				bool spent   = hoverClip > 0 && clip >= 0 && clip < hoverClip
-				bool started = clip == hoverClip && hoverCooldown < 0.05 && cooldown > 0.2
-				if ( spent || started )
-				{
-					BH_Debug( "titan: VTOL hover (clip " + hoverClip + " -> " + clip + ", cooldown " + cooldown + ")" )
-					BH_Play( "titan_hover" )
-				}
+				if ( hoverClip > 0 && clip >= 0 && clip < hoverClip )
+					used = true
+				if ( clip == hoverClip && hoverCooldown < 0.05 && cooldown > 0.2 )
+					used = true
 			}
 
-			hoverWeapon   = hover
+			if ( used && now - lastTactical > BH_TACTICAL_DEDUPE )
+			{
+				BH_Debug( "titan: tactical (" + tactical.GetWeaponClassName() + ", clip " + hoverClip + " -> " + clip + ", cooldown " + cooldown + ")" )
+				BH_Play( "titan_tactical" )
+				lastTactical = now
+			}
+
+			hoverWeapon   = tactical
 			hoverClip     = clip
 			hoverCooldown = cooldown
 		}
+		tacticalActive = IsValid( tactical ) && tactical == activeWeapon
 
 		wasTitan = true
 	}

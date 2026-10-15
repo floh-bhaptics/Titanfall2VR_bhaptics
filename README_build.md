@@ -134,7 +134,7 @@ All names are lower case, as they must be in the bHaptics portal.
 | `reload_magazine_out` | Magazine pulled out (`tf2vr_reload_magazine_out` counts up) | client |
 | `reload_magazine_in` | Clip count of the active pilot weapon goes up: magazine inserted (one event per shell for shell-by-shell reloads) | client |
 | `reload_rack` | Slide/bolt racked with a round in it (`tf2vr_reload_rounds` counts up). `tf2vr_reload_ejections` is only logged for now | client |
-| `titan_hover` | VTOL hover used (Northstar loadout, ~3 s of hovering): ability ammo drops or cooldown starts | client |
+| `titan_tactical` | Titan tactical ability used, the VR mod's "down" swipe: sonar pulse, electric smoke, VTOL hover (~3 s), ... (ability in slot `OFFHAND_TITAN_CENTER` becomes active, its ammo drops or its cooldown starts; max. once per second) | client |
 | `titan_flight` | Repeats every 0.5 s while Flight Core is active (active weapon `mp_titanweapon_flightcore_rockets`) | client |
 | `titan_core_ready` | Titan core becomes available (`IsCoreChargeAvailable`) | client |
 | `titan_core_charge` | Repeats every 0.2 s during the core's activation wind-up; intensity 0.3-1.0 follows the core weapon's charge fraction | client |
