@@ -5,7 +5,7 @@ For players: see `README.md` (installation only). This file is for development.
 bHaptics and ProTube (ProVolver) support for CircuitLord's Titanfall 2 VR mod,
 built as a Northstar plugin (native DLL) plus a small Northstar mod (Squirrel scripts).
 
-Current state (v0.6.1): the plugin connects to the bHaptics Player, plays a
+Current state (v1.5.0): the plugin connects to the bHaptics Player, plays a
 heartbeat on startup, and gives the game scripts `BH_*` functions. The mod's
 scripts use them for damage, health, death, movement, Titan events, recoil,
 explosions and Titan melee.
@@ -67,7 +67,7 @@ only tracks and updates its own files, so ours survive mod updates.
 5. Check `TF2VR\logs\nslog<newest>.txt` for lines like:
 
 ```
-[BHAPTICS] Titanfall2VR_bhaptics v0.3.0 loaded
+[BHAPTICS] Titanfall2VR_bhaptics v1.5.0 loaded
 [BHAPTICS] [DEBUG] Loading bHaptics library from G:\...\TF2VR\plugins\lib\bhaptics_library.dll
 [BHAPTICS] [DEBUG] bHaptics library loaded, waiting for bHaptics Player...
 [BHAPTICS] Connected to bHaptics Player after 312 ms
@@ -126,6 +126,19 @@ All names are lower case, as they must be in the bHaptics portal.
 | `titanfall` | Any Titan (incl. our own) landing after a fast fall, within ~100 m; intensity by distance, directional | client |
 | `timeshift_charge` | "Effect and Cause": the player uses the timeshift device, start of the ~0.5 s wind-up before the jump (`AddCallback_OnTimeShiftAbilityUsed`, in the untyped `tf2vr_bh_timeshift_server.nut`) | server |
 | `timeshift` | "Effect and Cause": the player switches timelines, manual or scripted (position jumps > 1500 units within one frame; past and present are stacked copies of the level). The debug log shows the offset, its z sign tells past from present | client |
+| `draw_primary_l` / `_r` | Primary gun drawn from the shoulder holster, left / right hand (VR mod `tf2vr_draw` command, acked via `tf2vr_gun_ack`) | server + client |
+| `draw_secondary_l` / `_r` | Secondary gun or arc tool drawn from the hip holster | server + client |
+| `grenade_take` | Grenade taken from the chest (`tf2vr_grenade` command, acked via `tf2vr_grenade_ack`) | server |
+| `grenade_store` | Held grenade put back on the chest (`tf2vr_store_grenade` command) | server |
+| `grenade_throw` | Grenade thrown (`tf2vr_projectile_ticket` changes) | client |
+| `reload_magazine_out` | Magazine pulled out (`tf2vr_reload_magazine_out` counts up) | client |
+| `reload_magazine_in` | Clip count of the active pilot weapon goes up: magazine inserted (one event per shell for shell-by-shell reloads) | client |
+| `reload_rack` | Slide/bolt racked with a round in it (`tf2vr_reload_rounds` counts up). `tf2vr_reload_ejections` is only logged for now | client |
+| `titan_hover` | VTOL hover used (Northstar loadout, ~3 s of hovering): ability ammo drops or cooldown starts | client |
+| `titan_flight` | Repeats every 0.5 s while Flight Core is active (active weapon `mp_titanweapon_flightcore_rockets`) | client |
+| `titan_core_ready` | Titan core becomes available (`IsCoreChargeAvailable`) | client |
+| `titan_core_charge` | Repeats every 0.2 s during the core's activation wind-up; intensity 0.3-1.0 follows the core weapon's charge fraction | client |
+| `titan_core_active` | Core starts (`SoulTitanCore_GetExpireTime( soul ) > Time()`) | client |
 | `recoil_titan_rockets` | Own Titan fires shoulder rockets: once at the start of each salvo (ordnance slot: clip drop or cooldown start, then 3 s quiet period). Ordnance fired as the active weapon (Tone's tracker rockets) plays `recoil_titan` instead | client |
 
 Recoil: shots are detected when the active weapon's magazine count drops
@@ -258,6 +271,7 @@ With `Level::Debug`, the log should show:
 | `bHaptics Player still not reachable` | Player not running; the plugin keeps trying and connects when it starts |
 | `ProTube disabled: could not load ForceTubeVR_API_x64.dll (Windows error 126)` | Visual C++ 2015-2022 x64 runtime missing |
 | `ProTube kick ...` logged but nothing felt | ProVolver off, not paired in Windows Bluetooth, or ProTube Companion still running (close it) |
+| SERVER script compile error about `AddClientCommandNotifyCallback` | `Northstar.CustomServers` is missing in `TF2VR\mods` (it provides that function); the draw and chest grenade effects need it |
 | `Play '...'` logged but nothing felt | Event name missing or misspelled in the workspace, or the device isn't connected (see the `Devices:` line) |
 | `client script loaded, native plugin NOT loaded` | Mod loaded but plugin missing or failed: check the lines above it |
 
@@ -283,6 +297,10 @@ mod\Titanfall2VR_bhaptics\   Northstar mod, copied to TF2VR\mods\
 ```
 
 ## Next steps
+
+- Holstering a gun: the VR mod handles "release grip to holster" in its
+  native code only (internal `gun_held` state). Needs a convar or command
+  from CircuitLord, then `holster_primary` / `holster_secondary` are easy.
 
 - Recoil for weapons without a magazine.
 - Rocket/grenade detonations near the player (the client missile hook crashed

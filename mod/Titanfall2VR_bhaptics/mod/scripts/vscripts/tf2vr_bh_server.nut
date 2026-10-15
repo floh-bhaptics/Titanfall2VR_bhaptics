@@ -39,6 +39,13 @@ void function TF2VR_BH_ServerInit()
 	// register them when it spawns. Both sources are deduplicated.
 	AddSpawnCallback( "player", BH_OnPlayerEntitySpawned )
 	AddCallback_OnPlayerRespawned( BH_OnPlayerEntitySpawned )
+
+	// VR mod gestures (client commands sent by its native code). Notify
+	// callbacks run after the VR mod's own handler, so its ack convars
+	// already tell whether the action succeeded. Needs Northstar.CustomServers.
+	AddClientCommandNotifyCallback( "tf2vr_draw", BH_OnVrDraw )
+	AddClientCommandNotifyCallback( "tf2vr_grenade", BH_OnVrGrenadeTake )
+	AddClientCommandNotifyCallback( "tf2vr_store_grenade", BH_OnVrGrenadeStore )
 #endif
 }
 
@@ -178,6 +185,36 @@ void function BH_OnSoulDeath( entity soul, var damageInfo )
 	bool ours = BH_IsOurPlayer( titan ) || BH_IsOurPlayer( soul.GetBossPlayer() )
 	if ( ours )
 		BH_Play( "titan_destroyed" )
+}
+
+// ===================================================================
+//  VR mod gestures: draw a gun, take / store a grenade on the chest
+// ===================================================================
+
+// "tf2vr_draw <ticket> <slot>": the VR mod sets tf2vr_gun_ack to the ticket
+// once the gun is equipped (to -ticket if it refused). The hand is only known
+// on the client, so the client plays the effect.
+void function BH_OnVrDraw( entity player, array<string> args )
+{
+	if ( args.len() < 2 || GetConVarInt( "tf2vr_gun_ack" ) != args[0].tointeger() )
+		return
+	ServerToClientStringCommand( player, "BH_Draw " + args[1] )
+}
+
+// "tf2vr_grenade <ticket>": grenade taken from the chest, if acked.
+void function BH_OnVrGrenadeTake( entity player, array<string> args )
+{
+	if ( args.len() < 1 || GetConVarInt( "tf2vr_grenade_ack" ) != args[0].tointeger() )
+		return
+	BH_Debug( "grenade: taken from chest" )
+	BH_Play( "grenade_take" )
+}
+
+// "tf2vr_store_grenade <ticket>": held grenade put back on the chest.
+void function BH_OnVrGrenadeStore( entity player, array<string> args )
+{
+	BH_Debug( "grenade: stored on chest" )
+	BH_Play( "grenade_store" )
 }
 
 #endif

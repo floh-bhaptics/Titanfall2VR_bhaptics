@@ -57,6 +57,10 @@ const float BH_ROCKET_SALVO_QUIET  = 3.0
 // units per frame).
 const float BH_TIMESHIFT_MIN_JUMP  = 1500.0
 
+// Titan flight and core
+const float BH_FLIGHT_INTERVAL     = 0.5  // seconds between "titan_flight" while Flight Core is active
+const float BH_CORE_CHARGE_INTERVAL = 0.2 // seconds between "titan_core_charge" during the core wind-up
+
 struct BH_Projectile
 {
 	entity ent
@@ -94,6 +98,11 @@ struct
 	float lastHealingTime     = -999.0
 	entity recoilWeapon
 	int    recoilClip         = -1
+	// VR mod interaction counters (convars set by the VR mod's native code)
+	int    grenadeThrowTicket  = 0
+	int    reloadMagazineOut   = 0
+	int    reloadEjections     = 0
+	int    reloadRounds        = 0
 	float  lastExplosionTime  = -999.0
 	bool   meleeActive        = false
 } file
@@ -128,6 +137,14 @@ void function TF2VR_BH_ClientInit()
 	// are inside, see BH_TitanfallWatchThread).
 	AddCreateCallback( "npc_titan", BH_OnNpcTitanCreated )
 	thread BH_TitanfallWatchThread()
+
+	// VR mod interactions: gun drawn from a holster (reported by the server,
+	// see BH_OnDrawCommand), grenade throws and reload steps (VR mod convars).
+	AddServerToClientStringCommandCallback( "BH_Draw", BH_OnDrawCommand )
+	thread BH_InteractionWatchThread()
+
+	// Titan VTOL hover, Flight Core, core ready / wind-up / active.
+	thread BH_TitanAbilityWatchThread()
 
 	// Timeline switches, only in the two "Effect and Cause" maps. The device's
 	// wind-up ("timeshift_charge") is played by tf2vr_bh_timeshift_server.nut.
@@ -351,6 +368,12 @@ void function BH_RecoilWatchThread()
 				BH_PlayTitanRecoil( weapon )
 			else
 				BH_PlayRecoil( weapon )
+		}
+		else if ( clip > file.recoilClip && !player.IsTitan() )
+		{
+			// Magazine inserted (or one shell, for shell-by-shell reloads)
+			BH_Debug( "reload: clip " + file.recoilClip + " -> " + clip )
+			BH_Play( "reload_magazine_in" )
 		}
 
 		file.recoilClip = clip
@@ -847,6 +870,204 @@ void function BH_TimeshiftWatchThread()
 
 		lastPlayer = player
 		lastOrigin = origin
+	}
+}
+
+// ===================================================================
+//  VR mod interactions: drawing guns, grenades, reloading
+//
+//  CircuitLord's VR mod handles these gestures in its native code and talks
+//  to its scripts through convars and client commands:
+//   - Gun drawn from a holster: the server handles "tf2vr_draw" and acks it
+//     through tf2vr_gun_ack. Our server script listens to that command and
+//     sends "BH_Draw <slot>" here (only real draws, not picking up a gun).
+//     Slot 0 = primary (over the shoulder), 1 = secondary, 3 = arc tool (hip).
+//   - Grenade taken from / put back on the chest: server side, see
+//     tf2vr_bh_server.nut.
+//   - Grenade thrown: tf2vr_projectile_ticket changes.
+//   - Reload: tf2vr_reload_magazine_out, tf2vr_reload_ejections and
+//     tf2vr_reload_rounds count steps (magazine pulled out, ejected, rounds
+//     thrown out by racking). Magazine in = clip goes up, see the recoil watcher.
+//  Holstering a gun is not exposed by the VR mod (yet).
+// ===================================================================
+
+void function BH_OnDrawCommand( array<string> args )
+{
+	int slot = args.len() > 0 ? args[0].tointeger() : -1
+	string side = TF2VR_WeaponHand() == 0 ? "l" : "r"
+	string eventName = slot == 0 ? "draw_primary_" + side : "draw_secondary_" + side
+	BH_Debug( "draw: slot " + slot )
+	BH_Play( eventName )
+}
+
+void function BH_InteractionWatchThread()
+{
+	file.grenadeThrowTicket = GetConVarInt( "tf2vr_projectile_ticket" )
+	file.reloadMagazineOut  = GetConVarInt( "tf2vr_reload_magazine_out" )
+	file.reloadEjections    = GetConVarInt( "tf2vr_reload_ejections" )
+	file.reloadRounds       = GetConVarInt( "tf2vr_reload_rounds" )
+
+	while ( true )
+	{
+		WaitFrame()
+
+		int ticket = GetConVarInt( "tf2vr_projectile_ticket" )
+		if ( ticket != file.grenadeThrowTicket )
+		{
+			file.grenadeThrowTicket = ticket
+			if ( ticket != 0 )
+			{
+				BH_Debug( "grenade: thrown (ticket " + ticket + ")" )
+				BH_Play( "grenade_throw" )
+			}
+		}
+
+		int magazineOut = GetConVarInt( "tf2vr_reload_magazine_out" )
+		if ( magazineOut > file.reloadMagazineOut )
+		{
+			BH_Debug( "reload: magazine out (" + magazineOut + ")" )
+			BH_Play( "reload_magazine_out" )
+		}
+		file.reloadMagazineOut = magazineOut
+
+		// Meaning not fully known yet: logged only, to see when it counts up.
+		int ejections = GetConVarInt( "tf2vr_reload_ejections" )
+		if ( ejections > file.reloadEjections )
+			BH_Debug( "reload: ejection (" + ejections + ")" )
+		file.reloadEjections = ejections
+
+		int rounds = GetConVarInt( "tf2vr_reload_rounds" )
+		if ( rounds > file.reloadRounds )
+		{
+			BH_Debug( "reload: rack, rounds thrown out (" + rounds + ")" )
+			BH_Play( "reload_rack" )
+		}
+		file.reloadRounds = rounds
+	}
+}
+
+// ===================================================================
+//  Titan abilities: VTOL hover, Flight Core, core charge
+//
+//  - VTOL hover (mp_titanability_hover, Northstar loadout): about 3 s of
+//    hovering with gravity off (server function FlyerHovers). Detected when
+//    the ability is used (its ammo drops or its cooldown starts), like the
+//    shoulder rockets. Plays "titan_hover" once; the pattern can be ~3 s long.
+//  - Flight Core: while it runs, the Titan's active weapon is
+//    mp_titanweapon_flightcore_rockets. "titan_flight" repeats meanwhile.
+//  - Core: "titan_core_ready" when the core becomes available,
+//    "titan_core_charge" repeatedly during the activation wind-up (the core
+//    weapon is a charge weapon; intensity follows the charge), and
+//    "titan_core_active" when the core starts.
+// ===================================================================
+
+void function BH_TitanAbilityWatchThread()
+{
+	entity hoverWeapon      = null
+	int    hoverClip        = -1
+	float  hoverCooldown    = 0.0
+	bool   flying           = false
+	float  nextFlight       = 0.0
+	bool   coreReady        = true  // no "ready" right after embarking with a full core
+	bool   coreActive       = false
+	float  nextCoreCharge   = 0.0
+	bool   wasTitan         = false
+
+	while ( true )
+	{
+		WaitFrame()
+
+		entity player = GetLocalClientPlayer()
+		if ( !IsValid( player ) || !IsAlive( player ) || !player.IsTitan() )
+		{
+			hoverWeapon = null
+			flying      = false
+			wasTitan    = false
+			continue
+		}
+
+		float now = Time()
+		entity soul = player.GetTitanSoul()
+
+		// ---- Core: ready / wind-up / active ----
+		if ( IsValid( soul ) )
+		{
+			bool ready = IsCoreChargeAvailable( player, soul )
+			if ( ready && !coreReady && wasTitan )
+			{
+				BH_Debug( "titan: core ready" )
+				BH_Play( "titan_core_ready" )
+			}
+			coreReady = ready
+
+			bool coreNowActive = SoulTitanCore_GetExpireTime( soul ) > now
+			if ( coreNowActive && !coreActive )
+			{
+				BH_Debug( "titan: core active" )
+				BH_Play( "titan_core_active" )
+			}
+			coreActive = coreNowActive
+		}
+
+		entity coreWeapon = player.GetOffhandWeapon( OFFHAND_EQUIPMENT )
+		if ( IsValid( coreWeapon ) )
+		{
+			float charge = coreWeapon.GetWeaponChargeFraction()
+			if ( charge > 0.0 && charge < 1.0 && now >= nextCoreCharge )
+			{
+				BH_PlayParam( "titan_core_charge", 0.3 + 0.7 * charge, 1.0, 0.0, 0.0 )
+				nextCoreCharge = now + BH_CORE_CHARGE_INTERVAL
+			}
+		}
+
+		// ---- Flight Core ----
+		entity activeWeapon = player.GetActiveWeapon()
+		bool flightCore = IsValid( activeWeapon ) && activeWeapon.GetWeaponClassName() == "mp_titanweapon_flightcore_rockets"
+		if ( flightCore && ( !flying || now >= nextFlight ) )
+		{
+			if ( !flying )
+				BH_Debug( "titan: Flight Core flying" )
+			BH_Play( "titan_flight" )
+			nextFlight = now + BH_FLIGHT_INTERVAL
+		}
+		flying = flightCore
+
+		// ---- VTOL hover ----
+		entity hover = null
+		foreach ( entity offhand in player.GetOffhandWeapons() )
+		{
+			if ( IsValid( offhand ) && offhand.GetWeaponClassName() == "mp_titanability_hover" )
+				hover = offhand
+		}
+
+		if ( hover == null )
+		{
+			hoverWeapon = null
+		}
+		else
+		{
+			int   clip     = hover.GetWeaponPrimaryClipCount()
+			float cooldown = hover.GetNextAttackAllowedTime() - now
+			if ( cooldown < 0.0 )
+				cooldown = 0.0
+
+			if ( hover == hoverWeapon )
+			{
+				bool spent   = hoverClip > 0 && clip >= 0 && clip < hoverClip
+				bool started = clip == hoverClip && hoverCooldown < 0.05 && cooldown > 0.2
+				if ( spent || started )
+				{
+					BH_Debug( "titan: VTOL hover (clip " + hoverClip + " -> " + clip + ", cooldown " + cooldown + ")" )
+					BH_Play( "titan_hover" )
+				}
+			}
+
+			hoverWeapon   = hover
+			hoverClip     = clip
+			hoverCooldown = cooldown
+		}
+
+		wasTitan = true
 	}
 }
 
