@@ -959,6 +959,9 @@ void function BH_InteractionWatchThread()
 //    "titan_core_charge" repeatedly during the activation wind-up (the core
 //    weapon is a charge weapon; intensity follows the charge), and
 //    "titan_core_active" when the core starts.
+//  - Shield: "titan_shield_start" when the vortex shield (incl. Ion's) or
+//    Scorch's heat shield goes up. While held, the shield is the Titan's
+//    active weapon (the VR mod triggers it with the left-grip gesture).
 // ===================================================================
 
 void function BH_TitanAbilityWatchThread()
@@ -972,6 +975,7 @@ void function BH_TitanAbilityWatchThread()
 	bool   coreActive       = false
 	float  nextCoreCharge   = 0.0
 	bool   wasTitan         = false
+	bool   shieldUp         = false
 
 	while ( true )
 	{
@@ -983,6 +987,7 @@ void function BH_TitanAbilityWatchThread()
 			hoverWeapon = null
 			flying      = false
 			wasTitan    = false
+			shieldUp    = false
 			continue
 		}
 
@@ -1032,6 +1037,15 @@ void function BH_TitanAbilityWatchThread()
 		}
 		flying = flightCore
 
+		// ---- Vortex / heat shield ----
+		bool shield = IsValid( activeWeapon ) && BH_IsTitanShieldWeapon( activeWeapon.GetWeaponClassName() )
+		if ( shield && !shieldUp )
+		{
+			BH_Debug( "titan: shield up (" + activeWeapon.GetWeaponClassName() + ")" )
+			BH_Play( "titan_shield_start" )
+		}
+		shieldUp = shield
+
 		// ---- VTOL hover ----
 		entity hover = null
 		foreach ( entity offhand in player.GetOffhandWeapons() )
@@ -1069,6 +1083,18 @@ void function BH_TitanAbilityWatchThread()
 
 		wasTitan = true
 	}
+}
+
+bool function BH_IsTitanShieldWeapon( string weaponClass )
+{
+	switch ( weaponClass )
+	{
+		case "mp_titanweapon_vortex_shield":
+		case "mp_titanweapon_vortex_shield_ion":
+		case "mp_titanweapon_heat_shield":
+			return true
+	}
+	return false
 }
 
 #endif

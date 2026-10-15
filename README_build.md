@@ -138,6 +138,7 @@ All names are lower case, as they must be in the bHaptics portal.
 | `titan_flight` | Repeats every 0.5 s while Flight Core is active (active weapon `mp_titanweapon_flightcore_rockets`) | client |
 | `titan_core_ready` | Titan core becomes available (`IsCoreChargeAvailable`) | client |
 | `titan_core_charge` | Repeats every 0.2 s during the core's activation wind-up; intensity 0.3-1.0 follows the core weapon's charge fraction | client |
+| `titan_shield_start` | Vortex shield (incl. Ion's) or Scorch's heat shield goes up: it becomes the Titan's active weapon | client |
 | `titan_core_active` | Core starts (`SoulTitanCore_GetExpireTime( soul ) > Time()`) | client |
 | `recoil_titan_rockets` | Own Titan fires shoulder rockets: once at the start of each salvo (ordnance slot: clip drop or cooldown start, then 3 s quiet period). Ordnance fired as the active weapon (Tone's tracker rockets) plays `recoil_titan` instead | client |
 
