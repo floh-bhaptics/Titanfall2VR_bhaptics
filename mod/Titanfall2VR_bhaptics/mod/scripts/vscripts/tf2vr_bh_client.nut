@@ -63,6 +63,18 @@ const float BH_CORE_CHARGE_INTERVAL = 0.2 // seconds between "titan_core_charge"
 const float BH_SHIELD_DEDUPE       = 1.0  // seconds: one "titan_shield_start" per use
 const float BH_TACTICAL_DEDUPE     = 1.0  // seconds: one "titan_tactical" per use
 const float BH_LOAD_QUIET_TIME     = 3.0  // seconds after level load without "player_enter_titan"
+const float BH_ROCKET_SWAP_QUIET   = 2.0  // seconds: no rocket effect right after the launcher or loadout changed
+const float BH_RACK_WINDOW         = 0.2  // seconds: a clip drop this close to a slide rack is not a shot
+const float BH_LASER_INTERVAL      = 0.25 // seconds between "titan_laser" while Ion's Laser Core fires
+const float BH_DEATH_FALL_SPEED    = 900.0 // ~23 m/s down at death = fell to death ("falling_die")
+const float BH_DEATH_GRACE         = 0.3  // seconds to wait for the server's player_killed before the client plays
+const float BH_LONG_FALL_SPEED     = 600.0 // debug: log falls faster than this (~15 m/s)
+// "Quick death": falling into an abyss doesn't kill the player in the campaign,
+// it teleports them back to a respawn point at standstill. Seen as: falling
+// faster than this, then a jump of at least BH_QUICKDEATH_MIN_JUMP within one
+// frame with most of the speed gone (a timeshift keeps the velocity).
+const float BH_QUICKDEATH_FALL_SPEED = 300.0 // ~7.5 m/s down before the teleport
+const float BH_QUICKDEATH_MIN_JUMP   = 300.0 // ~7.5 m
 
 struct BH_Projectile
 {
@@ -70,6 +82,20 @@ struct BH_Projectile
 	vector lastOrigin
 	float  createdTime
 	string weaponName
+}
+
+// State of one Titan ability, to notice when it is used. Abilities show use in
+// different ways: they become the active weapon (sonar pulse), their clip or
+// stockpile drops, their cooldown starts, or their charge value jumps up
+// (multi-target missiles count their cooldown there).
+struct BH_AbilityTracker
+{
+	entity weapon
+	int    clip     = -1
+	int    stock    = -1
+	float  cooldown = 0.0
+	float  charge   = 0.0
+	bool   active   = false
 }
 
 struct BH_FallTracker
@@ -92,6 +118,9 @@ struct
 	entity ordnanceWeapon
 	int    ordnanceClip       = -1
 	float  ordnanceCooldown   = 0.0
+	float  ordnanceCharge     = 0.0
+	float  ordnanceQuietUntil = 0.0
+	entity titanMainWeapon
 	float  lastRocketActivity = -999.0
 	int   heartbeatGeneration = 0
 	bool  heartbeatActive     = false
@@ -101,6 +130,12 @@ struct
 	float lastHealingTime     = -999.0
 	entity recoilWeapon
 	int    recoilClip         = -1
+	float  recoilNextAttack   = 0.0
+	int    recoilRackRounds   = 0
+	float  lastRackTime       = -999.0
+	float  lastServerDeath    = -999.0
+	float  lastServerQuickDeath = -999.0
+	float  lastTactical       = -999.0
 	// VR mod interaction counters (convars set by the VR mod's native code)
 	float  initTime            = 0.0
 	int    gunAck              = 0
@@ -123,6 +158,7 @@ void function TF2VR_BH_ClientInit()
 
 	AddCreateTitanCockpitCallback( BH_OnTitanCockpitCreated )
 	AddServerToClientStringCommandCallback( "BH_PlayerKilled", BH_OnPlayerKilledCommand )
+	AddServerToClientStringCommandCallback( "BH_QuickDeath", BH_OnQuickDeathCommand )
 	AddCallback_LocalClientPlayerSpawned( BH_OnLocalPlayerSpawned )
 
 	// Explosions, method 1: projectiles (grenades, rockets) are reported by
@@ -151,6 +187,11 @@ void function TF2VR_BH_ClientInit()
 
 	// Titan tactical ability, Flight Core, core ready / wind-up / active, shield.
 	thread BH_TitanAbilityWatchThread()
+	// Tether traps are fired as "grenade" projectiles; a second signal for them.
+	AddCreateCallback( "grenade", BH_OnGrenadeCreated )
+
+	// Deaths the server doesn't report (falls), see BH_DeathWatchThread.
+	thread BH_DeathWatchThread()
 
 	// Timeline switches, only in the two "Effect and Cause" maps. The device's
 	// wind-up ("timeshift_charge") is played by tf2vr_bh_timeshift_server.nut.
@@ -305,7 +346,15 @@ void function BH_HeartbeatThread( int generation )
 
 void function BH_OnPlayerKilledCommand( array<string> args )
 {
+	file.lastServerDeath = Time()
 	BH_StopHeartbeat( "player killed" )
+}
+
+// The server played "falling_die" for a quick death (abyss respawn).
+void function BH_OnQuickDeathCommand( array<string> args )
+{
+	file.lastServerQuickDeath = Time()
+	BH_StopHeartbeat( "quick death" )
 }
 
 // ===================================================================
@@ -346,9 +395,20 @@ void function BH_OnTitanCockpitCreated( entity cockpit, entity player )
 
 void function BH_RecoilWatchThread()
 {
+	file.recoilRackRounds = GetConVarInt( "tf2vr_reload_rounds" )
+
 	while ( true )
 	{
 		WaitFrame()
+
+		// Racking the slide with a round chambered throws that round out: the
+		// clip drops by one without a shot. The VR mod counts racks.
+		int rackRounds = GetConVarInt( "tf2vr_reload_rounds" )
+		if ( rackRounds != file.recoilRackRounds )
+		{
+			file.recoilRackRounds = rackRounds
+			file.lastRackTime     = Time()
+		}
 
 		entity player = GetLocalClientPlayer()
 		if ( !IsValid( player ) || !IsAlive( player ) )
@@ -364,37 +424,66 @@ void function BH_RecoilWatchThread()
 			continue
 		}
 
-		int clip = weapon.GetWeaponPrimaryClipCount()
+		int   clip       = weapon.GetWeaponPrimaryClipCount()
+		float nextAttack = weapon.GetNextAttackAllowedTime()
 
 		if ( weapon != file.recoilWeapon )
 		{
 			// Weapon switch or pickup: new baseline, no shot.
-			file.recoilWeapon = weapon
-			file.recoilClip   = clip
+			file.recoilWeapon     = weapon
+			file.recoilClip       = clip
+			file.recoilNextAttack = nextAttack
 			continue
 		}
 
+		bool   titan       = player.IsTitan()
+		string weaponClass = weapon.GetWeaponClassName()
+
 		if ( clip < file.recoilClip )
 		{
-			if ( player.IsTitan() )
+			if ( titan )
 			{
-				// Abilities (sonar pulse, particle wall, ...) briefly become the
-				// active weapon and use ammo too, but they aren't shots.
-				if ( !BH_IsTitanAbility( weapon.GetWeaponClassName() ) )
+				if ( BH_IsTitanShot( weaponClass ) )
 					BH_PlayTitanRecoil( weapon )
 			}
+			else if ( Time() - file.lastRackTime < BH_RACK_WINDOW )
+				BH_Debug( "rack: clip " + file.recoilClip + " -> " + clip + ", not a shot" )
 			else
 				BH_PlayRecoil( weapon )
 		}
-		else if ( clip > file.recoilClip && !player.IsTitan() )
+		else if ( titan && weaponClass == "mp_titanweapon_flightcore_rockets"
+			&& nextAttack > file.recoilNextAttack + 0.001 && nextAttack > Time() )
+		{
+			// Flight Core rockets never lower their clip; each shot moves the
+			// next allowed attack forward instead.
+			BH_PlayTitanRecoil( weapon )
+		}
+		else if ( clip > file.recoilClip && !titan )
 		{
 			// Magazine inserted (or one shell, for shell-by-shell reloads)
 			BH_Debug( "reload: clip " + file.recoilClip + " -> " + clip )
-			BH_Play( "reload_magazine_in" )
+			BH_Play( "reload_magazine_in_" + BH_HandSide() )
 		}
 
-		file.recoilClip = clip
+		file.recoilClip       = clip
+		file.recoilNextAttack = nextAttack
 	}
+}
+
+// "l" or "r": the hand holding the weapon (main hand when two-handed).
+string function BH_HandSide()
+{
+	return TF2VR_WeaponHand() == 0 ? "l" : "r"
+}
+
+// Titan weapons that count as shots for "recoil_titan". Abilities, rocket
+// ordnance (own effect), cores and shields briefly become the active weapon
+// too, but aren't shots.
+bool function BH_IsTitanShot( string weaponClass )
+{
+	if ( BH_IsTitanAbility( weaponClass ) || BH_IsTitanRocketWeapon( weaponClass ) || BH_IsTitanShieldWeapon( weaponClass ) )
+		return false
+	return !( weaponClass.len() > 13 && weaponClass.slice( 0, 13 ) == "mp_titancore_" )
 }
 
 // Titan weapons with a magazine (XO-16, 40mm, Leadwall, ...). No hand: the
@@ -781,32 +870,48 @@ void function BH_TitanRocketWatchThread()
 		entity player = GetLocalViewPlayer()
 		if ( !IsValid( player ) || !IsAlive( player ) || !player.IsTitan() )
 		{
-			file.ordnanceWeapon = null
+			file.ordnanceWeapon  = null
+			file.titanMainWeapon = null
 			continue
 		}
 
-		// Rocket ordnance that becomes the active weapon when fired (e.g. Tone's
-		// tracker rockets) is already covered by the normal Titan recoil.
+		float now = Time()
+
+		// Loadout switch: the Titan gets new weapons, and the launcher's ammo
+		// and cooldown are set right after. Don't mistake that for a salvo.
+		array<entity> mainWeapons = player.GetMainWeapons()
+		entity mainWeapon = mainWeapons.len() > 0 ? mainWeapons[0] : null
+		if ( mainWeapon != file.titanMainWeapon )
+		{
+			if ( file.titanMainWeapon != null )
+				file.ordnanceQuietUntil = now + BH_ROCKET_SWAP_QUIET
+			file.titanMainWeapon = mainWeapon
+		}
+
+		// Also when fired as the active weapon (multi-target missiles lock on
+		// while held): the recoil watcher skips rocket ordnance, so no doubles.
 		entity ordnance = player.GetOffhandWeapon( OFFHAND_ORDNANCE )
-		if ( !IsValid( ordnance ) || !BH_IsTitanRocketWeapon( ordnance.GetWeaponClassName() )
-			|| ordnance == player.GetActiveWeapon() )
+		if ( !IsValid( ordnance ) || !BH_IsTitanRocketWeapon( ordnance.GetWeaponClassName() ) )
 		{
 			file.ordnanceWeapon = null
 			continue
 		}
 
 		int   clip     = ordnance.GetWeaponPrimaryClipCount()
-		float cooldown = ordnance.GetNextAttackAllowedTime() - Time()
+		float charge   = ordnance.GetWeaponChargeFraction()
+		float cooldown = ordnance.GetNextAttackAllowedTime() - now
 		if ( cooldown < 0.0 )
 			cooldown = 0.0
 
 		if ( ordnance != file.ordnanceWeapon )
 		{
-			// New Titan or loadout: baseline only.
-			file.ordnanceWeapon   = ordnance
-			file.ordnanceClip     = clip
-			file.ordnanceCooldown = cooldown
-			BH_Debug( "Titan rockets: " + ordnance.GetWeaponClassName() + " clip=" + clip )
+			// New Titan or loadout: baseline only, then a short quiet time.
+			file.ordnanceWeapon     = ordnance
+			file.ordnanceClip       = clip
+			file.ordnanceCooldown   = cooldown
+			file.ordnanceCharge     = charge
+			file.ordnanceQuietUntil = now + BH_ROCKET_SWAP_QUIET
+			BH_Debug( "Titan rockets: " + ordnance.GetWeaponClassName() + " clip=" + clip + " charge=" + charge )
 			continue
 		}
 
@@ -815,20 +920,30 @@ void function BH_TitanRocketWatchThread()
 			detected = "clip " + file.ordnanceClip + " -> " + clip
 		else if ( file.ordnanceCooldown < 0.05 && cooldown > 0.2 && clip == file.ordnanceClip )
 			detected = "cooldown started: " + cooldown + " s"
+		else if ( charge > file.ordnanceCharge + 0.05 )
+			detected = "charge " + file.ordnanceCharge + " -> " + charge // multi-target missiles
 
 		if ( detected != "" )
 		{
-			// Only the first detection of a salvo plays; the pattern in the
-			// bHaptics portal covers the whole salvo.
-			bool newSalvo = Time() - file.lastRocketActivity > BH_ROCKET_SALVO_QUIET
-			file.lastRocketActivity = Time()
-			BH_Debug( "Titan rocket activity (" + detected + ")" + ( newSalvo ? ", new salvo" : ", same salvo, skipped" ) )
-			if ( newSalvo )
-				BH_Play( "recoil_titan_rockets" )
+			if ( now < file.ordnanceQuietUntil )
+			{
+				BH_Debug( "Titan rocket activity (" + detected + ") ignored: launcher or loadout just changed" )
+			}
+			else
+			{
+				// Only the first detection of a salvo plays; the pattern in the
+				// bHaptics portal covers the whole salvo.
+				bool newSalvo = now - file.lastRocketActivity > BH_ROCKET_SALVO_QUIET
+				file.lastRocketActivity = now
+				BH_Debug( "Titan rocket activity (" + detected + ")" + ( newSalvo ? ", new salvo" : ", same salvo, skipped" ) )
+				if ( newSalvo )
+					BH_Play( "recoil_titan_rockets" )
+			}
 		}
 
 		file.ordnanceClip     = clip
 		file.ordnanceCooldown = cooldown
+		file.ordnanceCharge   = charge
 	}
 }
 
@@ -836,9 +951,9 @@ bool function BH_IsTitanRocketWeapon( string weaponClass )
 {
 	switch ( weaponClass )
 	{
-		// not "mp_titanweapon_tracker_rockets": fired as the active weapon,
-		// so the normal Titan recoil handles it
-		case "mp_titanweapon_shoulder_rockets":
+		// not "mp_titanweapon_tracker_rockets": Tone's ordnance is fired like
+		// a gun, so the normal Titan recoil handles it
+		case "mp_titanweapon_shoulder_rockets": // multi-target missile system
 		case "mp_titanweapon_homing_rockets":
 		case "mp_titanweapon_salvo_rockets":
 		case "mp_titanweapon_dumbfire_rockets":
@@ -862,6 +977,7 @@ void function BH_TimeshiftWatchThread()
 
 	entity lastPlayer = null
 	vector lastOrigin = < 0, 0, 0 >
+	vector lastVelocity = < 0, 0, 0 >
 
 	while ( true )
 	{
@@ -875,18 +991,27 @@ void function BH_TimeshiftWatchThread()
 		}
 
 		vector origin = player.GetOrigin()
+		vector velocity = player.GetVelocity()
 		if ( player == lastPlayer )
 		{
 			vector delta = origin - lastOrigin
 			if ( Length( delta ) > BH_TIMESHIFT_MIN_JUMP )
 			{
-				BH_Debug( "timeshift: timeline switch, offset x " + delta.x + " y " + delta.y + " z " + delta.z )
-				BH_Play( "timeshift" )
+				if ( BH_IsQuickdeath( lastVelocity, velocity ) )
+				{
+					BH_Debug( "timeshift: jump is a quick death respawn, skipped" )
+				}
+				else
+				{
+					BH_Debug( "timeshift: timeline switch, offset x " + delta.x + " y " + delta.y + " z " + delta.z )
+					BH_Play( "timeshift" )
+				}
 			}
 		}
 
-		lastPlayer = player
-		lastOrigin = origin
+		lastPlayer   = player
+		lastOrigin   = origin
+		lastVelocity = velocity
 	}
 }
 
@@ -964,7 +1089,7 @@ void function BH_InteractionWatchThread()
 		if ( magazineOut > file.reloadMagazineOut )
 		{
 			BH_Debug( "reload: magazine out (" + magazineOut + ")" )
-			BH_Play( "reload_magazine_out" )
+			BH_Play( "reload_magazine_out_" + BH_HandSide() )
 		}
 		file.reloadMagazineOut = magazineOut
 
@@ -978,7 +1103,7 @@ void function BH_InteractionWatchThread()
 		if ( rounds > file.reloadRounds )
 		{
 			BH_Debug( "reload: rack, rounds thrown out (" + rounds + ")" )
-			BH_Play( "reload_rack" )
+			BH_Play( "reload_rack_" + BH_HandSide() )
 		}
 		file.reloadRounds = rounds
 	}
@@ -1005,12 +1130,10 @@ void function BH_InteractionWatchThread()
 
 void function BH_TitanAbilityWatchThread()
 {
-	entity hoverWeapon      = null  // tactical ability weapon (name kept from the hover-only version)
-	bool   tacticalActive   = false
-	float  lastTactical     = -999.0
-	int    hoverClip        = -1
-	float  hoverCooldown    = 0.0
+	BH_AbilityTracker tacticalTracker
+	BH_AbilityTracker hoverTracker
 	bool   flying           = false
+	float  nextLaser        = 0.0
 	float  nextFlight       = 0.0
 	bool   coreReady        = true  // no "ready" right after embarking with a full core
 	bool   coreActive       = false
@@ -1029,8 +1152,8 @@ void function BH_TitanAbilityWatchThread()
 		entity player = GetLocalClientPlayer()
 		if ( !IsValid( player ) || !IsAlive( player ) || !player.IsTitan() )
 		{
-			hoverWeapon    = null
-			tacticalActive = false
+			tacticalTracker.weapon = null
+			hoverTracker.weapon    = null
 			flying         = false
 			wasTitan    = false
 			shieldUp     = false
@@ -1084,6 +1207,15 @@ void function BH_TitanAbilityWatchThread()
 		}
 		flying = flightCore
 
+		// ---- Ion's Laser Core: the laser is the active weapon while it fires ----
+		if ( IsValid( activeWeapon ) && activeWeapon.GetWeaponClassName() == "mp_titancore_laser_cannon" && now >= nextLaser )
+		{
+			if ( nextLaser < now - 1.0 )
+				BH_Debug( "titan: Laser Core firing" )
+			BH_Play( "titan_laser" )
+			nextLaser = now + BH_LASER_INTERVAL
+		}
+
 		// ---- Shields: vortex, heat shield, particle wall, gun shield ----
 		entity shieldOffhand = null
 		foreach ( entity offhand in player.GetOffhandWeapons() )
@@ -1130,40 +1262,23 @@ void function BH_TitanAbilityWatchThread()
 		}
 
 		// ---- Tactical ability ("down" swipe in the VR mod): sonar pulse,
-		// electric smoke, VTOL hover, ... whatever sits in the tactical slot ----
+		// electric smoke, tether trap, ... whatever sits in the tactical slot.
+		// VTOL hover is detected by name wherever it sits (it may be the
+		// defensive ability), and also plays "titan_tactical". ----
 		entity tactical = player.GetOffhandWeapon( OFFHAND_TITAN_CENTER )
-		if ( !IsValid( tactical ) )
+		string tacticalUse = BH_AbilityUsed( tacticalTracker, tactical, activeWeapon, now )
+		if ( tacticalUse != "" )
+			BH_PlayTactical( tactical, tacticalUse )
+
+		entity hover = null
+		foreach ( entity offhand in player.GetOffhandWeapons() )
 		{
-			hoverWeapon = null
+			if ( IsValid( offhand ) && offhand != tactical && offhand.GetWeaponClassName() == "mp_titanability_hover" )
+				hover = offhand
 		}
-		else
-		{
-			int   clip     = tactical.GetWeaponPrimaryClipCount()
-			float cooldown = tactical.GetNextAttackAllowedTime() - now
-			if ( cooldown < 0.0 )
-				cooldown = 0.0
-
-			bool used = tactical == activeWeapon && !tacticalActive
-			if ( tactical == hoverWeapon )
-			{
-				if ( hoverClip > 0 && clip >= 0 && clip < hoverClip )
-					used = true
-				if ( clip == hoverClip && hoverCooldown < 0.05 && cooldown > 0.2 )
-					used = true
-			}
-
-			if ( used && now - lastTactical > BH_TACTICAL_DEDUPE )
-			{
-				BH_Debug( "titan: tactical (" + tactical.GetWeaponClassName() + ", clip " + hoverClip + " -> " + clip + ", cooldown " + cooldown + ")" )
-				BH_Play( "titan_tactical" )
-				lastTactical = now
-			}
-
-			hoverWeapon   = tactical
-			hoverClip     = clip
-			hoverCooldown = cooldown
-		}
-		tacticalActive = IsValid( tactical ) && tactical == activeWeapon
+		string hoverUse = BH_AbilityUsed( hoverTracker, hover, activeWeapon, now )
+		if ( hoverUse != "" )
+			BH_PlayTactical( hover, hoverUse )
 
 		wasTitan = true
 	}
@@ -1187,6 +1302,188 @@ bool function BH_IsTitanShieldWeapon( string weaponClass )
 bool function BH_IsTitanAbility( string weaponClass )
 {
 	return weaponClass.len() > 16 && weaponClass.slice( 0, 16 ) == "mp_titanability_"
+}
+
+// Updates the tracker and returns why the ability counts as used this frame,
+// or "" if it doesn't. Structs are passed by reference.
+string function BH_AbilityUsed( BH_AbilityTracker t, entity weapon, entity activeWeapon, float now )
+{
+	if ( !IsValid( weapon ) )
+	{
+		t.weapon = null
+		t.active = false
+		return ""
+	}
+
+	int   clip     = weapon.GetWeaponPrimaryClipCount()
+	int   stock    = weapon.GetWeaponPrimaryAmmoCount()
+	float charge   = weapon.GetWeaponChargeFraction()
+	float cooldown = weapon.GetNextAttackAllowedTime() - now
+	if ( cooldown < 0.0 )
+		cooldown = 0.0
+	bool  active   = weapon == activeWeapon
+
+	string reason = ""
+	if ( weapon == t.weapon )
+	{
+		if ( active && !t.active )
+			reason = "became active"
+		else if ( t.clip > 0 && clip >= 0 && clip < t.clip )
+			reason = "clip " + t.clip + " -> " + clip
+		else if ( t.stock > 0 && stock >= 0 && stock < t.stock )
+			reason = "stockpile " + t.stock + " -> " + stock
+		else if ( clip == t.clip && t.cooldown < 0.05 && cooldown > 0.2 )
+			reason = "cooldown " + cooldown + " s"
+		else if ( charge > t.charge + 0.2 )
+			reason = "charge " + t.charge + " -> " + charge
+	}
+	else
+	{
+		BH_Debug( "titan ability: " + weapon.GetWeaponClassName() + " clip=" + clip + " stock=" + stock + " charge=" + charge )
+	}
+
+	t.weapon   = weapon
+	t.clip     = clip
+	t.stock    = stock
+	t.charge   = charge
+	t.cooldown = cooldown
+	t.active   = active
+	return reason
+}
+
+// Sonar pulse fires a projectile like the rockets, so it plays those instead.
+void function BH_PlayTactical( entity weapon, string reason )
+{
+	float now = Time()
+	if ( now - file.lastTactical < BH_TACTICAL_DEDUPE )
+		return
+	file.lastTactical = now
+
+	string weaponClass = IsValid( weapon ) ? weapon.GetWeaponClassName() : "?"
+	BH_Debug( "titan: tactical (" + weaponClass + ", " + reason + ")" )
+	if ( weaponClass == "mp_titanability_sonar_pulse" )
+		BH_Play( "recoil_titan_rockets" )
+	else
+		BH_Play( "titan_tactical" )
+}
+
+// Tether traps (and other Titan grenades) as a second signal. Reading the
+// projectile's weapon during creation asserts in code, so look one frame later.
+void function BH_OnGrenadeCreated( entity ent )
+{
+	entity player = GetLocalClientPlayer()
+	if ( !IsValid( player ) || !player.IsTitan() )
+		return
+	thread BH_CheckTitanGrenade( ent )
+}
+
+void function BH_CheckTitanGrenade( entity ent )
+{
+	WaitFrame()
+	entity player = GetLocalClientPlayer()
+	if ( !IsValid( ent ) || !IsValid( player ) || ent.GetOwner() != player )
+		return
+	string weaponClass = ent.ProjectileGetWeaponClassName()
+	BH_Debug( "titan grenade created: " + weaponClass )
+	if ( weaponClass == "mp_titanability_tether_trap" )
+		BH_PlayTactical( null, "tether trap projectile" )
+}
+
+// ===================================================================
+//  Deaths the server doesn't report
+//
+//  "player_killed" normally comes from the server script. If the local
+//  player dies and the server didn't report it within BH_DEATH_GRACE (falls,
+//  or a save that predates this mod, see README_build), the client plays it:
+//  "falling_die" if the player was falling fast just before, else
+//  "player_killed". Fast falls are also logged, to see what happens when
+//  falling off the map.
+// ===================================================================
+
+void function BH_DeathWatchThread()
+{
+	bool   wasAlive      = false
+	float  lastFallSpeed = 0.0
+	float  fallLogged    = -999.0
+	entity lastPlayer    = null
+	vector lastOrigin    = < 0, 0, 0 >
+	vector lastVelocity  = < 0, 0, 0 >
+
+	while ( true )
+	{
+		WaitFrame()
+
+		entity player = GetLocalClientPlayer()
+		bool alive = IsValid( player ) && IsAlive( player )
+
+		if ( alive )
+		{
+			vector origin   = player.GetOrigin()
+			vector velocity = player.GetVelocity()
+			float vz = velocity.z
+			lastFallSpeed = -vz
+			if ( -vz > BH_LONG_FALL_SPEED && Time() - fallLogged > 1.0 )
+			{
+				BH_Debug( "falling fast: " + lastFallSpeed + " units/s" )
+				fallLogged = Time()
+			}
+
+			// Quick death: teleported back while falling, no real death.
+			if ( player == lastPlayer )
+			{
+				float jump = Length( origin - lastOrigin )
+				if ( jump > BH_QUICKDEATH_MIN_JUMP )
+				{
+					BH_Debug( "position jump " + jump + " units, speed " + Length( lastVelocity ) + " -> " + Length( velocity ) + ", vertical " + lastVelocity.z )
+					// Fallback only: the server reports quick deaths directly
+					// (doingQuickDeath), unless the level was resumed from a
+					// save made before this mod version.
+					if ( BH_IsQuickdeath( lastVelocity, velocity ) )
+					{
+						if ( Time() - file.lastServerQuickDeath < 5.0 )
+						{
+							BH_Debug( "quick death already reported by the server" )
+						}
+						else
+						{
+							BH_StopHeartbeat( "quick death" )
+							BH_Play( "falling_die" )
+						}
+					}
+				}
+			}
+			lastPlayer   = player
+			lastOrigin   = origin
+			lastVelocity = velocity
+		}
+		else if ( wasAlive && IsValid( player ) )
+		{
+			float deathTime = Time()
+			float fallSpeed = lastFallSpeed
+			BH_Debug( "death seen on client (falling " + fallSpeed + " units/s)" )
+			wait BH_DEATH_GRACE
+			if ( file.lastServerDeath >= deathTime - 0.5 )
+			{
+				BH_Debug( "death already reported by the server" )
+			}
+			else
+			{
+				BH_StopHeartbeat( "player died (client)" )
+				BH_Play( fallSpeed > BH_DEATH_FALL_SPEED ? "falling_die" : "player_killed" )
+			}
+		}
+
+		if ( !alive )
+			lastPlayer = null // new baseline after respawn
+
+		wasAlive = alive
+	}
+}
+
+// Falling, then (after a position jump) most of the speed gone.
+bool function BH_IsQuickdeath( vector before, vector after )
+{
+	return before.z < -BH_QUICKDEATH_FALL_SPEED && Length( after ) < 0.5 * Length( before )
 }
 
 #endif

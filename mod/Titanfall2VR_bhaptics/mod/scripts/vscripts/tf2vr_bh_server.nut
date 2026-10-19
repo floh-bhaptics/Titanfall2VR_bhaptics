@@ -48,6 +48,9 @@ void function TF2VR_BH_ServerInit()
 	// started with this mod version; a loaded save restores the server script
 	// state from when it was made.
 	AddClientCommandNotifyCallback( "tf2vr_store_grenade", BH_OnVrGrenadeStore )
+
+	// Falling into an abyss: see BH_QuickDeathWatchThread.
+	thread BH_QuickDeathWatchThread()
 #endif
 }
 
@@ -191,6 +194,36 @@ void function BH_OnSoulDeath( entity soul, var damageInfo )
 	bool ours = BH_IsOurPlayer( titan ) || BH_IsOurPlayer( soul.GetBossPlayer() )
 	if ( ours )
 		BH_Play( "titan_destroyed" )
+}
+
+// ===================================================================
+//  Quick death
+//
+//  Falling into an abyss doesn't kill the player in the campaign: the screen
+//  fades and they are put back at a respawn point ("Quickdeath respawn
+//  location set to ..." in the log). While that runs, the game sets
+//  player.p.doingQuickDeath. Its rising edge plays "falling_die"; the client
+//  is told so its movement-based fallback doesn't play it a second time.
+// ===================================================================
+
+void function BH_QuickDeathWatchThread()
+{
+	bool wasQuickDeath = false
+	while ( true )
+	{
+		WaitFrame()
+
+		array<entity> players = GetPlayerArray()
+		entity player = players.len() > 0 ? players[0] : null
+		bool quickDeath = IsValid( player ) && player.p.doingQuickDeath
+		if ( quickDeath && !wasQuickDeath )
+		{
+			BH_Debug( "quick death (doingQuickDeath)" )
+			BH_Play( "falling_die" )
+			ServerToClientStringCommand( player, "BH_QuickDeath" )
+		}
+		wasQuickDeath = quickDeath
+	}
 }
 
 // ===================================================================

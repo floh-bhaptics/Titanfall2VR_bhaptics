@@ -17,7 +17,7 @@
 namespace
 {
     constexpr const char* kPluginName     = "Titanfall2VR_bhaptics";
-    constexpr const char* kPluginVersion  = "1.5.0";
+    constexpr const char* kPluginVersion  = "1.6.0";
     constexpr const char* kLogName        = "BHAPTICS";
     // Squirrel constant for mod.json "PluginDependencies". Must be a valid
     // Squirrel identifier, otherwise Northstar refuses to load the plugin.

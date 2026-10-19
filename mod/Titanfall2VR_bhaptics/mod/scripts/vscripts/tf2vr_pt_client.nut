@@ -20,6 +20,11 @@ const float PT_TITAN_SHOT_POWER   = 0.8
 const float PT_TITAN_SHOT_TIME    = 0.12
 const float PT_TITAN_ROCKET_POWER = 1.0
 const float PT_TITAN_ROCKET_TIME  = 0.35
+const float PT_LASER_POWER        = 0.7   // Ion's Laser Core: rumble pulses while it fires
+const float PT_LASER_TIME         = 0.3
+const float PT_LASER_INTERVAL     = 0.25
+const float PT_RACK_WINDOW        = 0.2   // a clip drop this close to a slide rack is not a shot
+const float PT_ROCKET_SWAP_QUIET  = 2.0   // no rocket rumble right after the launcher or loadout changed
 
 global function TF2VR_PT_ClientInit
 
@@ -69,6 +74,20 @@ string function PT_Group( string name )
 		if ( name == item )
 			return "pistol"
 	return "rifle"
+}
+
+// Titan weapons that count as shots. Abilities, rocket ordnance (own rumble),
+// cores and shields briefly become the active weapon too, but aren't shots.
+bool function PT_TitanShot( string name )
+{
+	if ( name.len() > 16 && name.slice( 0, 16 ) == "mp_titanability_" )
+		return false
+	if ( name.len() > 13 && name.slice( 0, 13 ) == "mp_titancore_" )
+		return false
+	if ( PT_RocketOrdnance( name ) )
+		return false
+	return name != "mp_titanweapon_vortex_shield" && name != "mp_titanweapon_vortex_shield_ion"
+		&& name != "mp_titanweapon_heat_shield"
 }
 
 bool function PT_RocketOrdnance( string name )
@@ -140,12 +159,26 @@ void function PT_Watch()
 	table<entity, float> charges = {}
 	int secondaryAmmo = -1
 	float secondaryDelay = 0.0
+	float secondaryCharge = 0.0
+	float rocketQuietUntil = 0.0
+	entity titanMain = null
 	float lastRocket = -100.0
 	float lastFrame = -1.0
+	int rackRounds = GetConVarInt( "tf2vr_reload_rounds" )
+	float lastRack = -100.0
+	float nextLaser = 0.0
 	while ( true )
 	{
 		WaitFrame()
 		float now = Time()
+		// Racking the slide with a round chambered throws it out: the clip drops
+		// without a shot. The VR mod counts racks.
+		int rounds = GetConVarInt( "tf2vr_reload_rounds" )
+		if ( rounds != rackRounds )
+		{
+			rackRounds = rounds
+			lastRack = now
+		}
 		entity currentOwner = GetLocalClientPlayer()
 		// Rebaseline after respawn, player replacement or a long simulation gap.
 		bool reset = currentOwner != owner || lastFrame < 0.0 || now < lastFrame || now - lastFrame > 0.25
@@ -191,20 +224,38 @@ void function PT_Watch()
 					fired = charges[ active ] > 0.0 && active.GetWeaponChargeFraction() <= 0.0
 						&& attack > attacks[ active ] + 0.001 && attack > now
 				}
+				// Flight Core rockets never lower their clip; each shot moves the
+				// next allowed attack forward instead.
+				if ( !fired && name == "mp_titanweapon_flightcore_rockets" )
+				{
+					float flightAttack = active.GetNextAttackAllowedTime()
+					fired = flightAttack > attacks[ active ] + 0.001 && flightAttack > now
+				}
 			}
+			if ( fired && !owner.IsTitan() && now - lastRack < PT_RACK_WINDOW )
+				fired = false
 			// Charge first: its stop must not cut off the shot's rumble.
 			PT_UpdateCharge( owner, active, fired )
 			if ( fired )
 			{
 				if ( owner.IsTitan() )
 				{
-					// Abilities (sonar pulse, particle wall, ...) use ammo too, but aren't shots.
+					// Sonar pulse fires a projectile like the rockets; other abilities
+					// (particle wall, ...) use ammo too, but aren't shots.
 					string firedClass = active.GetWeaponClassName()
-					if ( !( firedClass.len() > 16 && firedClass.slice( 0, 16 ) == "mp_titanability_" ) )
+					if ( firedClass == "mp_titanability_sonar_pulse" )
+						PT_Rumble( PT_TITAN_ROCKET_POWER, PT_TITAN_ROCKET_TIME )
+					else if ( PT_TitanShot( firedClass ) )
 						PT_Rumble( PT_TITAN_SHOT_POWER, PT_TITAN_SHOT_TIME )
 				}
 				else
 					PT_Emit( PT_Group( active.GetWeaponClassName() ), active )
+			}
+			// Ion's Laser Core: the laser is the active weapon while it fires.
+			if ( owner.IsTitan() && active.GetWeaponClassName() == "mp_titancore_laser_cannon" && now >= nextLaser )
+			{
+				PT_Rumble( PT_LASER_POWER, PT_LASER_TIME )
+				nextLaser = now + PT_LASER_INTERVAL
 			}
 			primary = active
 		}
@@ -238,25 +289,43 @@ void function PT_Watch()
 		if ( !owner.IsTitan() )
 		{
 			secondary = null
+			titanMain = null
 			continue
 		}
+		// Loadout switch: new weapons, and the launcher's ammo and cooldown are
+		// set right after. Don't mistake that for a salvo.
+		array<entity> titanWeapons = owner.GetMainWeapons()
+		entity mainWeapon = titanWeapons.len() > 0 ? titanWeapons[0] : null
+		if ( mainWeapon != titanMain )
+		{
+			if ( titanMain != null )
+				rocketQuietUntil = now + PT_ROCKET_SWAP_QUIET
+			titanMain = mainWeapon
+		}
+		// Also when fired as the active weapon (multi-target missiles lock on
+		// while held); PT_TitanShot keeps rocket ordnance out of the shot rumble.
 		entity ordnance = owner.GetOffhandWeapon( OFFHAND_ORDNANCE )
-		if ( !IsValid( ordnance ) || ordnance == active || !PT_RocketOrdnance( ordnance.GetWeaponClassName() ) )
+		if ( !IsValid( ordnance ) || !PT_RocketOrdnance( ordnance.GetWeaponClassName() ) )
 		{
 			secondary = null
 			continue
 		}
 		int ammo = ordnance.GetWeaponPrimaryClipCount()
+		float charge = ordnance.GetWeaponChargeFraction()
 		float delay = ordnance.GetNextAttackAllowedTime() - now
 		if ( delay < 0.0 )
 			delay = 0.0
 		if ( ordnance != secondary )
+		{
 			lastRocket = -100.0
+			rocketQuietUntil = now + PT_ROCKET_SWAP_QUIET
+		}
 		else
 		{
 			bool spent = secondaryAmmo > 0 && ammo >= 0 && ammo < secondaryAmmo
 			bool cooldownBegan = ammo == secondaryAmmo && secondaryDelay < 0.05 && delay > 0.2
-			if ( spent || cooldownBegan )
+			bool charged = charge > secondaryCharge + 0.05 // multi-target missiles count their cooldown here
+			if ( ( spent || cooldownBegan || charged ) && now >= rocketQuietUntil )
 			{
 				if ( now - lastRocket > 3.0 )
 					PT_Rumble( PT_TITAN_ROCKET_POWER, PT_TITAN_ROCKET_TIME )
@@ -266,5 +335,6 @@ void function PT_Watch()
 		secondary = ordnance
 		secondaryAmmo = ammo
 		secondaryDelay = delay
+		secondaryCharge = charge
 	}
 }

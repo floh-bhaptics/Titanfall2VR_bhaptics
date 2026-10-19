@@ -104,7 +104,8 @@ All names are lower case, as they must be in the bHaptics portal.
 | `impact` | Taking damage, rotated towards the damage source (`angleX`) | client |
 | `healing` | Start of a health regeneration phase (max. once per second) | client |
 | `shield_damage` | Shield damage on the player (Titan shield) | server |
-| `player_killed` | Player died (also stops heartbeat and zipline loops) | server |
+| `player_killed` | Player died (also stops heartbeat and zipline loops). If the server doesn't report a death within 0.3 s (save from before the mod was installed), the client plays it | server (+ client fallback) |
+| `falling_die` | Fell into an abyss: the campaign's "quick death" fades out and puts the player back at a respawn point instead of killing them. The server plays it when `player.p.doingQuickDeath` becomes true. Client fallback (levels resumed from an older save, no server hooks): falling faster than ~7.5 m/s, then a position jump of more than ~7.5 m within one frame with most of the speed gone (a timeshift keeps the velocity). Also a real death while falling faster than ~23 m/s that the server didn't report | client |
 | `player_spawned` | Player spawned (level load, checkpoint, restart) | client |
 | `player_jump` | Jump and double jump | server |
 | `player_dodge` | Dodge (also Titan dash) | server |
@@ -119,7 +120,7 @@ All names are lower case, as they must be in the bHaptics portal.
 | `recoil_pistol_r` / `_l` | Shot with a pistol or SMG, right / left hand | client |
 | `recoil_rifle_r` / `_l` | Shot with a rifle or LMG | client |
 | `recoil_shotgun_r` / `_l` | Shot with a shotgun, sniper or launcher | client |
-| `recoil_titan` | Shot with a Titan weapon that has a magazine (incl. Burst Core) | client |
+| `recoil_titan` | Shot with a Titan weapon that has a magazine (incl. Burst Core), and Flight Core rockets (no clip change; detected by the next allowed attack moving forward). Not for abilities, rocket ordnance, cores and shields | client |
 | `explosion` | Explosive damage on the player; max. one per 0.3 s. (Projectile tracking via `tf2vr_bh_missiles_client.nut` is disabled since v0.5.1, see the file.) | client |
 | `titan_melee` | Titan punch or sword swing | client |
 | `titan_footstep` | Own Titan's footfall: walk animation cycle crosses 0.0 / 0.5 while moving on the ground | client |
@@ -131,16 +132,17 @@ All names are lower case, as they must be in the bHaptics portal.
 | `grenade_take` | Grenade in hand: taken from the chest or picked up (`tf2vr_grenade_ack` gets a new ticket) | client |
 | `grenade_store` | Held grenade put back on the chest (`tf2vr_store_grenade` command, notify callback). Only after a fresh level start with this mod, see the note below the table | server |
 | `grenade_throw` | Grenade thrown (`tf2vr_projectile_ticket` changes) | client |
-| `reload_magazine_out` | Magazine pulled out (`tf2vr_reload_magazine_out` counts up) | client |
-| `reload_magazine_in` | Clip count of the active pilot weapon goes up: magazine inserted (one event per shell for shell-by-shell reloads) | client |
-| `reload_rack` | Slide/bolt racked with a round in it (`tf2vr_reload_rounds` counts up). `tf2vr_reload_ejections` is only logged for now | client |
-| `titan_tactical` | Titan tactical ability used, the VR mod's "down" swipe: sonar pulse, electric smoke, VTOL hover (~3 s), ... (ability in slot `OFFHAND_TITAN_CENTER` becomes active, its ammo drops or its cooldown starts; max. once per second) | client |
+| `reload_magazine_out_l` / `_r` | Magazine pulled out (`tf2vr_reload_magazine_out` counts up); side = weapon hand | client |
+| `reload_magazine_in_l` / `_r` | Clip count of the active pilot weapon goes up: magazine inserted (one event per shell for shell-by-shell reloads); side = weapon hand | client |
+| `reload_rack_l` / `_r` | Slide/bolt racked with a round in it (`tf2vr_reload_rounds` counts up); side = weapon hand. The round thrown out is not counted as a shot (no recoil within 0.2 s of a rack). `tf2vr_reload_ejections` is only logged for now | client |
+| `titan_tactical` | Titan tactical ability used, the VR mod's "down" swipe: electric smoke, tether trap, ... (ability in slot `OFFHAND_TITAN_CENTER` becomes active, its clip or stockpile drops, its cooldown starts or its charge value jumps; tether traps also by their projectile). VTOL hover is detected by name in any slot. Sonar pulse plays `recoil_titan_rockets` instead. Max. once per second | client |
+| `titan_laser` | Repeats every 0.25 s while Ion's Laser Core fires (active weapon `mp_titancore_laser_cannon`) | client |
 | `titan_flight` | Repeats every 0.5 s while Flight Core is active (active weapon `mp_titanweapon_flightcore_rockets`) | client |
 | `titan_core_ready` | Titan core becomes available (`IsCoreChargeAvailable`) | client |
 | `titan_core_charge` | Repeats every 0.2 s during the core's activation wind-up; intensity 0.3-1.0 follows the core weapon's charge fraction | client |
 | `titan_shield_start` | Shield used: vortex (incl. Ion's), heat shield, particle wall or gun shield. The ability becomes the active weapon, its ammo drops or its cooldown starts; max. once per second | client |
 | `titan_core_active` | Core starts (`SoulTitanCore_GetExpireTime( soul ) > Time()`) | client |
-| `recoil_titan_rockets` | Own Titan fires shoulder rockets: once at the start of each salvo (ordnance slot: clip drop or cooldown start, then 3 s quiet period). Ordnance fired as the active weapon (Tone's tracker rockets) plays `recoil_titan` instead | client |
+| `recoil_titan_rockets` | Own Titan fires rocket ordnance: once at the start of each salvo (ordnance slot: clip drop, cooldown start, or charge value jump for the multi-target missile system; then 3 s quiet period). Ignored for 2 s after the launcher or the loadout changed. Also Tone's sonar pulse. Tone's tracker rockets are fired like a gun and play `recoil_titan` | client |
 
 **Server callbacks and save games:** continuing from a save restores the
 server script state of that save; Northstar runs no SERVER init callbacks
