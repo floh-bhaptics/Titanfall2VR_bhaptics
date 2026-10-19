@@ -458,16 +458,23 @@ void function BH_RecoilWatchThread()
 			// next allowed attack forward instead.
 			BH_PlayTitanRecoil( weapon )
 		}
-		else if ( clip > file.recoilClip && !titan )
+		else if ( clip > file.recoilClip && !titan && !BH_IsHeatWeapon( weaponClass ) )
 		{
 			// Magazine inserted (or one shell, for shell-by-shell reloads)
-			BH_Debug( "reload: clip " + file.recoilClip + " -> " + clip )
+			BH_Debug( "reload: " + weaponClass + " clip " + file.recoilClip + " -> " + clip )
 			BH_Play( "reload_magazine_in_" + BH_HandSide() )
 		}
 
 		file.recoilClip       = clip
 		file.recoilNextAttack = nextAttack
 	}
+}
+
+// Weapons whose "clip" is heat that refills by itself while cooling down
+// (no magazine): a rising clip is not a reload.
+bool function BH_IsHeatWeapon( string weaponClass )
+{
+	return weaponClass == "mp_weapon_lstar"
 }
 
 // "l" or "r": the hand holding the weapon (main hand when two-handed).

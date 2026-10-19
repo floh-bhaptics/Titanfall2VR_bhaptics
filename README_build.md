@@ -5,7 +5,7 @@ For players: see `README.md` (installation only). This file is for development.
 bHaptics and ProTube (ProVolver) support for CircuitLord's Titanfall 2 VR mod,
 built as a Northstar plugin (native DLL) plus a small Northstar mod (Squirrel scripts).
 
-Current state (v1.5.0): the plugin connects to the bHaptics Player, plays a
+Current state (v1.6.0): the plugin connects to the bHaptics Player, plays a
 heartbeat on startup, and gives the game scripts `BH_*` functions. The mod's
 scripts use them for damage, health, death, movement, Titan events, recoil,
 explosions and Titan melee.
@@ -67,7 +67,7 @@ only tracks and updates its own files, so ours survive mod updates.
 5. Check `TF2VR\logs\nslog<newest>.txt` for lines like:
 
 ```
-[BHAPTICS] Titanfall2VR_bhaptics v1.5.0 loaded
+[BHAPTICS] Titanfall2VR_bhaptics v1.6.0 loaded
 [BHAPTICS] [DEBUG] Loading bHaptics library from G:\...\TF2VR\plugins\lib\bhaptics_library.dll
 [BHAPTICS] [DEBUG] bHaptics library loaded, waiting for bHaptics Player...
 [BHAPTICS] Connected to bHaptics Player after 312 ms
@@ -105,7 +105,7 @@ All names are lower case, as they must be in the bHaptics portal.
 | `healing` | Start of a health regeneration phase (max. once per second) | client |
 | `shield_damage` | Shield damage on the player (Titan shield) | server |
 | `player_killed` | Player died (also stops heartbeat and zipline loops). If the server doesn't report a death within 0.3 s (save from before the mod was installed), the client plays it | server (+ client fallback) |
-| `falling_die` | Fell into an abyss: the campaign's "quick death" fades out and puts the player back at a respawn point instead of killing them. The server plays it when `player.p.doingQuickDeath` becomes true. Client fallback (levels resumed from an older save, no server hooks): falling faster than ~7.5 m/s, then a position jump of more than ~7.5 m within one frame with most of the speed gone (a timeshift keeps the velocity). Also a real death while falling faster than ~23 m/s that the server didn't report | client |
+| `falling_die` | Deadly fall (server: killed with damage source `fall`), or fell into an abyss: the campaign's "quick death" fades out and puts the player back at a respawn point instead of killing them. The server plays it when `player.p.doingQuickDeath` becomes true. Client fallback (levels resumed from an older save, no server hooks): falling faster than ~7.5 m/s, then a position jump of more than ~7.5 m within one frame with most of the speed gone (a timeshift keeps the velocity). Also a real death while falling faster than ~23 m/s that the server didn't report | client |
 | `player_spawned` | Player spawned (level load, checkpoint, restart) | client |
 | `player_jump` | Jump and double jump | server |
 | `player_dodge` | Dodge (also Titan dash) | server |
@@ -133,7 +133,7 @@ All names are lower case, as they must be in the bHaptics portal.
 | `grenade_store` | Held grenade put back on the chest (`tf2vr_store_grenade` command, notify callback). Only after a fresh level start with this mod, see the note below the table | server |
 | `grenade_throw` | Grenade thrown (`tf2vr_projectile_ticket` changes) | client |
 | `reload_magazine_out_l` / `_r` | Magazine pulled out (`tf2vr_reload_magazine_out` counts up); side = weapon hand | client |
-| `reload_magazine_in_l` / `_r` | Clip count of the active pilot weapon goes up: magazine inserted (one event per shell for shell-by-shell reloads); side = weapon hand | client |
+| `reload_magazine_in_l` / `_r` | Clip count of the active pilot weapon goes up: magazine inserted (one event per shell for shell-by-shell reloads); side = weapon hand. Not for heat weapons that refill while cooling down (L-STAR) | client |
 | `reload_rack_l` / `_r` | Slide/bolt racked with a round in it (`tf2vr_reload_rounds` counts up); side = weapon hand. The round thrown out is not counted as a shot (no recoil within 0.2 s of a rack). `tf2vr_reload_ejections` is only logged for now | client |
 | `titan_tactical` | Titan tactical ability used, the VR mod's "down" swipe: electric smoke, tether trap, ... (ability in slot `OFFHAND_TITAN_CENTER` becomes active, its clip or stockpile drops, its cooldown starts or its charge value jumps; tether traps also by their projectile). VTOL hover is detected by name in any slot. Sonar pulse plays `recoil_titan_rockets` instead. Max. once per second | client |
 | `titan_laser` | Repeats every 0.25 s while Ion's Laser Core fires (active weapon `mp_titancore_laser_cannon`) | client |
@@ -154,7 +154,8 @@ That's why most new effects are detected on the client.
 
 Level load: `player_enter_titan` is skipped for the first 3 s after the client
 script starts (levels that begin inside the Titan). `titan_destroyed` is
-skipped once no player is connected (quitting to the menu).
+skipped once no player is connected or when the Titan is removed without any
+damage (quitting to the menu, reloading a checkpoint).
 
 Recoil: shots are detected when the active weapon's magazine count drops
 (no game hook involved). The hand comes from the VR mod's

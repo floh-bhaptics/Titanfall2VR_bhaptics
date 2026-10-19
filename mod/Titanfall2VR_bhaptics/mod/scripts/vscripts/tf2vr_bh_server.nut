@@ -110,7 +110,11 @@ void function BH_OnPlayerKilled( entity victim, entity attacker, var damageInfo 
 		return
 
 	BH_StopZipline( "player killed" )
-	BH_Play( "player_killed" )
+
+	// Deadly falls (not abysses, those are quick deaths) kill with the "fall" source.
+	bool fell = damageInfo != null && DamageInfo_GetDamageSourceIdentifier( damageInfo ) == eDamageSourceId.fall
+	BH_Debug( "player killed" + ( fell ? " by a fall" : "" ) )
+	BH_Play( fell ? "falling_die" : "player_killed" )
 	ServerToClientStringCommand( victim, "BH_PlayerKilled" ) // stops the client heartbeat
 }
 
@@ -185,9 +189,13 @@ void function BH_OnSoulDeath( entity soul, var damageInfo )
 	if ( !IsValid( soul ) )
 		return
 
-	// Quitting to the menu destroys the Titan after the player disconnected.
-	if ( GetPlayerArray().len() == 0 )
+	// Quitting to the menu or reloading a checkpoint destroys the Titan while
+	// the game shuts down: no player left, or no damage behind the death.
+	if ( GetPlayerArray().len() == 0 || damageInfo == null )
+	{
+		BH_Debug( "Titan soul gone without damage (game shutting down), titan_destroyed skipped" )
 		return
+	}
 
 	// Our Titan: either we are in it, or it is BT running as auto-titan.
 	entity titan = soul.GetTitan()
