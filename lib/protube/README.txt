@@ -10,7 +10,10 @@ Redistributed with this mod with ProTubeVR's permission.
 Same binary as tested with PurplePeanut00's titanfall2-vr-provolver bridge.
 
 Loaded at runtime by src/protube.cpp (LoadLibrary/GetProcAddress, no import
-lib needed). Requires the Microsoft Visual C++ 2015-2022 x64 runtime.
+lib needed), only if <TF2VR>\UserData\enable_protube.txt exists: the DLL's
+own Bluetooth search thread crashed some players' games on startup with heap
+corruption (0xc0000374, in bluetoothapis/devobj called from the DLL), also
+without any ProTube device. Requires the Microsoft Visual C++ 2015-2022 x64 runtime.
 
 Function signatures used (x64, plain C exports, see ForceTubeVRInterface.cs):
   void    InitPistol();

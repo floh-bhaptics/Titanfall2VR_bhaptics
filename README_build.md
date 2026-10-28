@@ -5,7 +5,7 @@ For players: see `README.md` (installation only). This file is for development.
 bHaptics and ProTube (ProVolver) support for CircuitLord's Titanfall 2 VR mod,
 built as a Northstar plugin (native DLL) plus a small Northstar mod (Squirrel scripts).
 
-Current state (v1.6.0): the plugin connects to the bHaptics Player, plays a
+Current state (v1.6.1): the plugin connects to the bHaptics Player, plays a
 heartbeat on startup, and gives the game scripts `BH_*` functions. The mod's
 scripts use them for damage, health, death, movement, Titan events, recoil,
 explosions and Titan melee.
@@ -67,7 +67,7 @@ only tracks and updates its own files, so ours survive mod updates.
 5. Check `TF2VR\logs\nslog<newest>.txt` for lines like:
 
 ```
-[BHAPTICS] Titanfall2VR_bhaptics v1.6.0 loaded
+[BHAPTICS] Titanfall2VR_bhaptics v1.6.1 loaded
 [BHAPTICS] [DEBUG] Loading bHaptics library from G:\...\TF2VR\plugins\lib\bhaptics_library.dll
 [BHAPTICS] [DEBUG] bHaptics library loaded, waiting for bHaptics Player...
 [BHAPTICS] Connected to bHaptics Player after 312 ms
@@ -176,9 +176,17 @@ called directly.
 Recoil kicks and charge-up rumble for ProTube devices (ProVolver, ForceTube),
 independent of bHaptics: both can be used at the same time, or either alone.
 
+- **Opt-in since 1.6.1:** ProTube is only loaded if `<TF2VR>\UserData\enable_protube.txt`
+  exists. Reason: some players' games crashed on startup with heap corruption
+  (`0xc0000374`) in a thread the ProTube DLL starts itself after `InitPistol()`,
+  while it enumerates paired Bluetooth devices (`bluetoothapis.dll` →
+  `devobj.dll`), also without any ProTube device. That can't be caught (fail
+  fast), so bHaptics-only players must never load the DLL. Log line:
+  `ProTube support off (create TF2VR\UserData\enable_protube.txt ...)` or
+  `ProTube support enabled`.
 - `src/protube.cpp` loads `plugins\lib\ForceTubeVR_API_x64.dll` at runtime
-  (`LoadLibrary`/`GetProcAddress`, no wrapper or import lib). If the DLL is
-  missing, ProTube support is off and `PT_IsAvailable()` returns false; the
+  (`LoadLibrary`/`GetProcAddress`, no wrapper or import lib). If the file above
+  or the DLL is missing, ProTube support is off and `PT_IsAvailable()` returns false; the
   script then doesn't start. The DLL is never unloaded, the SDK keeps its own
   threads until the game exits. Source, hash and signatures: `lib\protube\README.txt`.
 - Same worker-thread model as bHaptics, but a separate worker, so a stuck

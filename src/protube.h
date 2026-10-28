@@ -2,7 +2,9 @@
 //
 // protube.h - ProTube / ProVolver force feedback (ForceTubeVR_API_x64.dll).
 //
-// Optional: if <plugins>\lib\ForceTubeVR_API_x64.dll is missing, everything
+// Opt-in: only active if <TF2VR>\UserData\enable_protube.txt exists (the
+// DLL's own Bluetooth thread crashed some games on startup) and
+// <plugins>\lib\ForceTubeVR_API_x64.dll is present. Otherwise everything
 // here is a no-op. Like haptics.h, all SDK calls run on a worker thread, so
 // Bluetooth trouble can never freeze the game.
 //

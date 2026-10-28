@@ -1,7 +1,7 @@
 {
 	"Name": "Titanfall2VR_bhaptics",
 	"Description": "bHaptics and ProTube support for Titanfall 2 VR",
-	"Version": "1.6.0",
+	"Version": "1.6.1",
 	"LoadPriority": 3,
 	"RequiredOnClient": false,
 

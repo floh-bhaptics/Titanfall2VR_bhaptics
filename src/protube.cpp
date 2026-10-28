@@ -654,11 +654,21 @@ namespace protube
             const auto slash = profile.find_last_of(L"\\/");
             g_userDir = (slash == std::wstring::npos ? pluginDir : profile.substr(0, slash + 1)) + L"UserData\\";
         }
+        // Opt-in: the ProTube DLL starts its own Bluetooth search thread as soon
+        // as it's initialized, and that thread crashed some players' games on
+        // startup (heap corruption inside the DLL, even without a ProTube
+        // device). So the DLL is only loaded if the player asks for it.
+        if (!FileExists(g_userDir + L"enable_protube.txt"))
+        {
+            logging::Info("ProTube support off (create TF2VR\\UserData\\enable_protube.txt to enable it)");
+            return;
+        }
         if (!FileExists(g_libPath))
         {
             logging::Info("ProTube support off (plugins\\lib\\ForceTubeVR_API_x64.dll not found)");
             return;
         }
+        logging::Info("ProTube support enabled (UserData\\enable_protube.txt found)");
 
         {
             std::lock_guard<std::mutex> lock(g_mutex);

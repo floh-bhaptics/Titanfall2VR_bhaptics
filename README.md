@@ -9,7 +9,8 @@ bHaptics and ProTube (ProVolver) support for CircuitLord's [Titanfall 2 VR mod](
 - For bHaptics: [bHaptics Player](https://www.bhaptics.com/software/player/)
   installed, running, and your bHaptics devices connected.
 - For a ProTube ProVolver: the ProVolver paired in Windows Bluetooth and
-  switched on. Close ProTube Companion before playing.
+  switched on, and ProTube support switched on once (see
+  [ProTube](#protube-provolver--forcetube)). Close ProTube Companion before playing.
 
 Either one works alone, or both together.
 
@@ -48,11 +49,20 @@ overwriting.
 
 ## ProTube (ProVolver / ForceTube)
 
-1. Pair your devices in Windows Bluetooth and switch them on **before**
+ProTube support is **off by default**: on some PCs, the ProTube library
+crashed the game on startup, even without a ProTube device. To switch it on:
+
+1. Create an empty text file named `enable_protube.txt` in the folder
+   `TF2VR\UserData` (create the `UserData` folder if it doesn't exist yet).
+   Make sure Windows doesn't save it as `enable_protube.txt.txt`.
+2. Pair your devices in Windows Bluetooth and switch them on **before**
    starting the game. Close ProTube Companion: while it runs, it takes the
    devices away from the game.
-2. Start the game and wait a few seconds: your devices buzz once they are
+3. Start the game and wait a few seconds: your devices buzz once they are
    connected.
+
+If the game crashes on startup after switching ProTube on, delete
+`enable_protube.txt` again.
 
 Featured effects:
 
@@ -96,7 +106,8 @@ Delete `TF2VR\plugins\Titanfall2VR_bhaptics.dll`,
 `TF2VR\plugins\lib\bhaptics_library.dll`,
 `TF2VR\plugins\lib\ForceTubeVR_API_x64.dll` and the folder
 `TF2VR\mods\Titanfall2VR_bhaptics`. ProTube users can also delete
-`right.pro`, `left.pro` and any `sameHand*.txt` in `TF2VR\UserData`.
+`enable_protube.txt`, `right.pro`, `left.pro` and any `sameHand*.txt` in
+`TF2VR\UserData`.
 
 ## Troubleshooting
 
@@ -105,8 +116,10 @@ Delete `TF2VR\plugins\Titanfall2VR_bhaptics.dll`,
   CircuitLord's installer, not directly from Steam.
 - **Still nothing:** check the newest log file in `TF2VR\logs`. Lines from
   this mod start with `[BHAPTICS]` and usually say what went wrong.
-- **ProTube device doesn't kick:** switch it on before starting the game,
-  check that it's paired in Windows Bluetooth, and close ProTube Companion.
+- **ProTube device doesn't kick:** check that `TF2VR\UserData\enable_protube.txt`
+  exists (the log says `ProTube support enabled`), switch the device on before
+  starting the game, check that it's paired in Windows Bluetooth, and close
+  ProTube Companion.
   The log shows `ProTube: device connected` or `ProTube: dual wielding ...`
   once the mod sees your devices.
 - **Wrong hand with two devices:** swap the file names `right.pro` and
@@ -116,7 +129,7 @@ Delete `TF2VR\plugins\Titanfall2VR_bhaptics.dll`,
 
 ## Credits
 
-ProTube support is loosely inspired by 
+ProTube support is based on
 [titanfall2-vr-provolver](https://github.com/PurplePeanut00/titanfall2-vr-provolver)
 by PurplePeanut00. The dual wield setup follows the format used by Astienth's
 ProTube mods, for example
