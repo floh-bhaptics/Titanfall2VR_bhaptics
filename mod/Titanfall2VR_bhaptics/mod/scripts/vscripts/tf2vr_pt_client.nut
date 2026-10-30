@@ -119,6 +119,18 @@ void function PT_StopCharge()
 	file.nextChargeSample = 0.0
 }
 
+// Our own player, or null during kill replays / spectating: the replayed
+// player counts as non-local and weapon calls on it end the game.
+entity function PT_OwnPlayer()
+{
+	if ( IsWatchingKillReplay() || IsWatchingSpecReplay() )
+		return null
+	entity player = GetLocalClientPlayer()
+	if ( !IsValid( player ) || player != GetLocalViewPlayer() )
+		return null
+	return player
+}
+
 void function PT_UpdateCharge( entity player, entity weapon, bool fired )
 {
 	string name = weapon.GetWeaponClassName()
@@ -179,7 +191,7 @@ void function PT_Watch()
 			rackRounds = rounds
 			lastRack = now
 		}
-		entity currentOwner = GetLocalClientPlayer()
+		entity currentOwner = PT_OwnPlayer()
 		// Rebaseline after respawn, player replacement or a long simulation gap.
 		bool reset = currentOwner != owner || lastFrame < 0.0 || now < lastFrame || now - lastFrame > 0.25
 		lastFrame = now

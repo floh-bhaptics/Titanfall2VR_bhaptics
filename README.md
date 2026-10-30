@@ -14,6 +14,9 @@ bHaptics and ProTube (ProVolver) support for CircuitLord's [Titanfall 2 VR mod](
 
 Either one works alone, or both together.
 
+Works in the campaign and (beta) in CircuitLord's multiplayer. In multiplayer
+you only feel what happens to you: your movement, your Titan, damage you take.
+
 ## Installation
 
 1. Download **[Titanfall2VR_bhaptics.zip](https://github.com/floh-bhaptics/Titanfall2VR_bhaptics/releases/latest/download/Titanfall2VR_bhaptics.zip)**

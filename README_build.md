@@ -5,7 +5,7 @@ For players: see `README.md` (installation only). This file is for development.
 bHaptics and ProTube (ProVolver) support for CircuitLord's Titanfall 2 VR mod,
 built as a Northstar plugin (native DLL) plus a small Northstar mod (Squirrel scripts).
 
-Current state (v1.6.1): the plugin connects to the bHaptics Player, plays a
+Current state (v1.7.2): the plugin connects to the bHaptics Player, plays a
 heartbeat on startup, and gives the game scripts `BH_*` functions. The mod's
 scripts use them for damage, health, death, movement, Titan events, recoil,
 explosions and Titan melee.
@@ -67,7 +67,7 @@ only tracks and updates its own files, so ours survive mod updates.
 5. Check `TF2VR\logs\nslog<newest>.txt` for lines like:
 
 ```
-[BHAPTICS] Titanfall2VR_bhaptics v1.6.1 loaded
+[BHAPTICS] Titanfall2VR_bhaptics v1.7.2 loaded
 [BHAPTICS] [DEBUG] Loading bHaptics library from G:\...\TF2VR\plugins\lib\bhaptics_library.dll
 [BHAPTICS] [DEBUG] bHaptics library loaded, waiting for bHaptics Player...
 [BHAPTICS] Connected to bHaptics Player after 312 ms
@@ -236,6 +236,36 @@ ProTube log lines (all `[BHAPTICS]`): `ProTube SDK loaded`, or
 `ProTube kick <weapon> power <n> recovery <ms> channel <c>` per kick,
 `ProTube channels: {...}` whenever the SDK's channel list changes, and
 `ProTube rumble power <n> for <ms> ms` per Titan shot.
+
+## Multiplayer (since 1.7.0, for CircuitLord's multiplayer beta)
+
+- The client scripts (`tf2vr_bh_client.nut`, `tf2vr_pt_client.nut`) run in
+  campaign and multiplayer (`RunOn: CLIENT`). The server scripts stay
+  campaign-only (`SERVER && SP`): in multiplayer the server is usually not on
+  our PC, and on a server we host they would react to every player
+  (`BH_IsOurPlayer` only checks "is a player", which is always us in the
+  campaign).
+- `BH_MultiplayerWatchThread` (only when `IsMultiplayer()`) plays the
+  server's effects from our own player's state: jump / air jump, landing,
+  wallrun, mantle (`IsTraversing`), zipline, Titan dash, Titan shield damage,
+  Titan health segment lost (`GetTitanCurrentRegenTab`), leaving the Titan,
+  Titan destroyed (left or died in a doomed Titan, or our auto-Titan died).
+  Debug lines start with `mp:`. Not available in multiplayer: `grenade_store`
+  (server command only) and abyss `falling_die` (campaign quick death); deaths
+  come from the client fallback in `BH_DeathWatchThread`.
+- Everything on the client gets our player from `BH_OwnPlayer()` /
+  `PT_OwnPlayer()`: `GetLocalClientPlayer()`, but null while
+  `IsWatchingKillReplay()` / `IsWatchingSpecReplay()` or while the view
+  player is someone else. During killcams the client plays back recorded
+  entities, and our own replayed player counts as non-local: weapon calls
+  on it (`GetWeaponPrimaryClipCount` etc.) throw "Cannot be called on
+  non-local players" and end the game (1.7.0 crashed like that). And we
+  would feel the killer's Titan footsteps and rockets. The Titan cockpit
+  callback also ignores other players' cockpits.
+- The VR-gesture watcher (draw, grenade, reload) pauses while we are dead
+  or in a killcam: the VR mod re-equips the loadout for the next life when
+  the killcam starts, which isn't a hand movement (1.7.1 played a draw then).
+- Titanfalls of other Titans nearby (by distance) are intended.
 
 ## Threading
 

@@ -76,6 +76,17 @@ const float BH_LONG_FALL_SPEED     = 600.0 // debug: log falls faster than this 
 const float BH_QUICKDEATH_FALL_SPEED = 300.0 // ~7.5 m/s down before the teleport
 const float BH_QUICKDEATH_MIN_JUMP   = 300.0 // ~7.5 m
 
+// Multiplayer: the server scripts don't run on our PC (and must not: on a
+// server we host they would see every player). These replace them on the
+// client, from our own player's state. See BH_MultiplayerWatchThread.
+const float BH_MP_JUMP_SPEED       = 150.0  // ~3.8 m/s up when leaving the ground = jump
+const float BH_MP_DOUBLE_JUMP_KICK = 150.0  // upward speed gained within one frame in the air
+const float BH_MP_DASH_KICK        = 300.0  // Titan: horizontal speed gained within one frame = dash
+const float BH_MP_MIN_AIR_TIME     = 0.25   // seconds in the air before a landing counts
+const float BH_MP_ZIPLINE_INTERVAL = 0.2    // seconds between "zipline" events (same as the server)
+const float BH_MP_SHIELD_INTERVAL  = 0.25   // min. seconds between two "shield_damage" events
+const float BH_MP_DEDUPE           = 0.3    // min. seconds between two jumps / dashes
+
 struct BH_Projectile
 {
 	entity ent
@@ -193,6 +204,17 @@ void function TF2VR_BH_ClientInit()
 	// Deaths the server doesn't report (falls), see BH_DeathWatchThread.
 	thread BH_DeathWatchThread()
 
+	// Multiplayer: movement, zipline, Titan and shield effects on the client.
+	if ( IsMultiplayer() )
+	{
+		BH_Debug( "multiplayer: server effects are played by the client script" )
+		thread BH_MultiplayerWatchThread()
+	}
+	else
+	{
+		BH_Debug( "campaign: server effects are played by the server script" )
+	}
+
 	// Timeline switches, only in the two "Effect and Cause" maps. The device's
 	// wind-up ("timeshift_charge") is played by tf2vr_bh_timeshift_server.nut.
 	string map = GetMapName()
@@ -232,7 +254,7 @@ float function BH_HitAngle( entity player, vector sourceOrigin )
 
 void function BH_OnLocalPlayerTookDamage( float damage, vector damageOrigin, int damageType, int damageSourceId, entity attacker )
 {
-	entity player = GetLocalViewPlayer()
+	entity player = BH_OwnPlayer()
 	if ( !IsValid( player ) )
 		return
 
@@ -255,7 +277,7 @@ void function BH_HealthWatchThread()
 	{
 		WaitFrame()
 
-		entity player = GetLocalClientPlayer()
+		entity player = BH_OwnPlayer()
 		if ( !IsValid( player ) )
 			continue
 
@@ -374,6 +396,10 @@ void function BH_OnLocalPlayerSpawned( entity player )
 
 void function BH_OnTitanCockpitCreated( entity cockpit, entity player )
 {
+	// Multiplayer killcams / spectating can create cockpits of other players.
+	if ( !IsValid( player ) || player != BH_OwnPlayer() )
+		return
+
 	// Levels that start inside the Titan create the cockpit while loading.
 	if ( Time() - file.initTime < BH_LOAD_QUIET_TIME )
 	{
@@ -381,6 +407,28 @@ void function BH_OnTitanCockpitCreated( entity cockpit, entity player )
 		return
 	}
 	BH_Play( "player_enter_titan" )
+}
+
+// ===================================================================
+//  Our own player, or null while it must not be touched
+//
+//  During a multiplayer kill replay (killcam) or spectator replay the
+//  client plays back recorded entities: GetLocalClientPlayer() still
+//  returns our player, but as a replay copy that counts as a non-local
+//  player, and weapon calls on it (GetWeaponPrimaryClipCount etc.) throw
+//  "Cannot be called on non-local players", which ends the game. The same
+//  applies whenever we view someone else. So every watcher gets null then
+//  and simply waits, as if we were dead.
+// ===================================================================
+
+entity function BH_OwnPlayer()
+{
+	if ( IsWatchingKillReplay() || IsWatchingSpecReplay() )
+		return null
+	entity player = GetLocalClientPlayer()
+	if ( !IsValid( player ) || player != GetLocalViewPlayer() )
+		return null
+	return player
 }
 
 // ===================================================================
@@ -410,7 +458,7 @@ void function BH_RecoilWatchThread()
 			file.lastRackTime     = Time()
 		}
 
-		entity player = GetLocalClientPlayer()
+		entity player = BH_OwnPlayer()
 		if ( !IsValid( player ) || !IsAlive( player ) )
 		{
 			file.recoilWeapon = null
@@ -617,7 +665,7 @@ void function BH_ProjectileWatchThread()
 void function BH_OnProjectileGone( BH_Projectile p )
 {
 	float life = Time() - p.createdTime
-	entity player = GetLocalViewPlayer()
+	entity player = BH_OwnPlayer()
 	if ( !IsValid( player ) )
 		return
 
@@ -661,7 +709,7 @@ void function BH_MeleeWatchThread()
 	{
 		WaitFrame()
 
-		entity player = GetLocalClientPlayer()
+		entity player = BH_OwnPlayer()
 		if ( !IsValid( player ) || !IsAlive( player ) )
 		{
 			file.meleeActive = false
@@ -686,7 +734,7 @@ void function BH_TitanStepWatchThread()
 	{
 		WaitFrame()
 
-		entity player = GetLocalViewPlayer()
+		entity player = BH_OwnPlayer()
 		if ( !IsValid( player ) || !IsAlive( player ) || !player.IsTitan() )
 		{
 			file.lastStepCycle = -1.0
@@ -770,7 +818,7 @@ void function BH_TitanfallWatchThread()
 	{
 		WaitFrame()
 
-		entity player = GetLocalViewPlayer()
+		entity player = BH_OwnPlayer()
 		if ( !IsValid( player ) )
 			continue
 
@@ -874,7 +922,7 @@ void function BH_TitanRocketWatchThread()
 	{
 		WaitFrame()
 
-		entity player = GetLocalViewPlayer()
+		entity player = BH_OwnPlayer()
 		if ( !IsValid( player ) || !IsAlive( player ) || !player.IsTitan() )
 		{
 			file.ordnanceWeapon  = null
@@ -990,7 +1038,7 @@ void function BH_TimeshiftWatchThread()
 	{
 		WaitFrame()
 
-		entity player = GetLocalClientPlayer()
+		entity player = BH_OwnPlayer()
 		if ( !IsValid( player ) || !IsAlive( player ) )
 		{
 			lastPlayer = null // respawn: start a new baseline
@@ -1044,7 +1092,8 @@ void function BH_TimeshiftWatchThread()
 //  Holstering a gun is not exposed by the VR mod (yet).
 // ===================================================================
 
-void function BH_InteractionWatchThread()
+// Takes the VR mod's counters as the new baseline without playing anything.
+void function BH_InteractionBaseline()
 {
 	file.gunAck             = GetConVarInt( "tf2vr_gun_ack" )
 	file.grenadeAck         = GetConVarInt( "tf2vr_grenade_ack" )
@@ -1052,10 +1101,38 @@ void function BH_InteractionWatchThread()
 	file.reloadMagazineOut  = GetConVarInt( "tf2vr_reload_magazine_out" )
 	file.reloadEjections    = GetConVarInt( "tf2vr_reload_ejections" )
 	file.reloadRounds       = GetConVarInt( "tf2vr_reload_rounds" )
+}
+
+void function BH_InteractionWatchThread()
+{
+	BH_InteractionBaseline()
+	bool paused = false
 
 	while ( true )
 	{
 		WaitFrame()
+
+		// While dead or in a killcam, the VR mod re-equips the loadout for the
+		// next life (multiplayer: a "draw" right when the killcam starts).
+		// That isn't a hand movement, so only take the new baseline.
+		entity player = BH_OwnPlayer()
+		if ( !IsValid( player ) || !IsAlive( player ) )
+		{
+			if ( !paused )
+			{
+				BH_Debug( "interactions paused (dead / killcam)" )
+				paused = true
+			}
+			BH_InteractionBaseline()
+			continue
+		}
+		if ( paused )
+		{
+			// Changes made during the spawn frame are part of the respawn too.
+			BH_InteractionBaseline()
+			paused = false
+			continue
+		}
 
 		int gunAck = GetConVarInt( "tf2vr_gun_ack" )
 		if ( gunAck != file.gunAck )
@@ -1156,7 +1233,7 @@ void function BH_TitanAbilityWatchThread()
 	{
 		WaitFrame()
 
-		entity player = GetLocalClientPlayer()
+		entity player = BH_OwnPlayer()
 		if ( !IsValid( player ) || !IsAlive( player ) || !player.IsTitan() )
 		{
 			tacticalTracker.weapon = null
@@ -1378,7 +1455,7 @@ void function BH_PlayTactical( entity weapon, string reason )
 // projectile's weapon during creation asserts in code, so look one frame later.
 void function BH_OnGrenadeCreated( entity ent )
 {
-	entity player = GetLocalClientPlayer()
+	entity player = BH_OwnPlayer()
 	if ( !IsValid( player ) || !player.IsTitan() )
 		return
 	thread BH_CheckTitanGrenade( ent )
@@ -1387,7 +1464,7 @@ void function BH_OnGrenadeCreated( entity ent )
 void function BH_CheckTitanGrenade( entity ent )
 {
 	WaitFrame()
-	entity player = GetLocalClientPlayer()
+	entity player = BH_OwnPlayer()
 	if ( !IsValid( ent ) || !IsValid( player ) || ent.GetOwner() != player )
 		return
 	string weaponClass = ent.ProjectileGetWeaponClassName()
@@ -1420,7 +1497,7 @@ void function BH_DeathWatchThread()
 	{
 		WaitFrame()
 
-		entity player = GetLocalClientPlayer()
+		entity player = BH_OwnPlayer()
 		bool alive = IsValid( player ) && IsAlive( player )
 
 		if ( alive )
@@ -1428,7 +1505,7 @@ void function BH_DeathWatchThread()
 			vector origin   = player.GetOrigin()
 			vector velocity = player.GetVelocity()
 			float vz = velocity.z
-			lastFallSpeed = -vz
+			lastFallSpeed = vz < 0.0 ? -vz : 0.0
 			if ( -vz > BH_LONG_FALL_SPEED && Time() - fallLogged > 1.0 )
 			{
 				BH_Debug( "falling fast: " + lastFallSpeed + " units/s" )
@@ -1491,6 +1568,228 @@ void function BH_DeathWatchThread()
 bool function BH_IsQuickdeath( vector before, vector after )
 {
 	return before.z < -BH_QUICKDEATH_FALL_SPEED && Length( after ) < 0.5 * Length( before )
+}
+
+// ===================================================================
+//  Multiplayer: server effects on the client
+//
+//  In the campaign, tf2vr_bh_server.nut plays movement, zipline, Titan and
+//  shield effects. In multiplayer that script doesn't run (RunOn SP only):
+//  on someone else's server it isn't on our PC at all, and on a server we
+//  host it would see every player. So this thread recreates them from our
+//  own player (GetLocalClientPlayer) only:
+//   - player_jump:       leaving the ground upwards, or gaining upward speed
+//                        in the air (double jump, wall jump)
+//   - player_land:       touching the ground after BH_MP_MIN_AIR_TIME
+//   - begin/end_wallrun: IsWallRunning() changes
+//   - player_mantle:     IsTraversing() starts
+//   - zipline:           every 0.2 s while IsZiplining()
+//   - player_dodge:      Titan gains horizontal speed within one frame (dash)
+//   - shield_damage:     the Titan's shield health drops
+//   - titan_hit:         the Titan loses a health segment (regen tab)
+//   - player_exit_titan: no longer a Titan (alive, Titan wasn't doomed)
+//   - titan_destroyed:   left a doomed Titan (ejected or died), or our
+//                        auto-Titan died
+//  Not available: grenade_store (only a server command), falling_die from
+//  abysses (campaign quick death); real deaths come from BH_DeathWatchThread.
+// ===================================================================
+
+void function BH_MultiplayerWatchThread()
+{
+	entity lastPlayer      = null
+	bool   wasOnGround     = true
+	bool   wasWallRunning  = false
+	bool   wasTraversing   = false
+	bool   wasZiplining    = false
+	bool   wasTitan        = false
+	bool   wasDoomed       = false
+	int    lastRegenTab    = -1
+	int    lastShield      = -1
+	float  airStart        = 0.0
+	float  lastJump        = -999.0
+	float  lastDash        = -999.0
+	float  lastShieldPlay  = -999.0
+	float  nextZipline     = 0.0
+	vector lastVelocity    = < 0, 0, 0 >
+	entity petTitan        = null
+	bool   wasReplay       = false
+
+	while ( true )
+	{
+		WaitFrame()
+
+		float now = Time()
+		bool replay = IsWatchingKillReplay() || IsWatchingSpecReplay()
+		if ( replay != wasReplay )
+		{
+			BH_Debug( replay ? "mp: replay started (killcam / spectating), effects paused" : "mp: replay ended" )
+			wasReplay = replay
+		}
+		entity player = BH_OwnPlayer()
+		if ( !IsValid( player ) || !IsAlive( player ) )
+		{
+			if ( wasTitan && wasDoomed && !replay )
+			{
+				BH_Debug( "mp: died in a doomed Titan" )
+				BH_Play( "titan_destroyed" )
+			}
+			lastPlayer = null
+			wasTitan   = false
+			wasDoomed  = false
+			continue
+		}
+
+		bool   titan    = player.IsTitan()
+		vector velocity = player.GetVelocity()
+
+		if ( player != lastPlayer )
+		{
+			// Spawn or new player entity: baseline only.
+			lastPlayer     = player
+			wasOnGround    = player.IsOnGround()
+			wasWallRunning = player.IsWallRunning()
+			wasTraversing  = player.IsTraversing()
+			wasZiplining   = player.IsZiplining()
+			wasTitan       = titan
+			wasDoomed      = titan && GetDoomedState( player )
+			lastRegenTab   = titan ? GetTitanCurrentRegenTab( player ) : -1
+			lastShield     = titan ? player.GetShieldHealth() : -1
+			lastVelocity   = velocity
+			airStart       = now
+			continue
+		}
+
+		// ---- Getting in and out of the Titan ----
+		if ( wasTitan && !titan )
+		{
+			if ( wasDoomed )
+			{
+				BH_Debug( "mp: left a doomed Titan (ejected)" )
+				BH_Play( "titan_destroyed" )
+			}
+			else
+			{
+				BH_Debug( "mp: left the Titan" )
+				BH_Play( "player_exit_titan" )
+			}
+			lastRegenTab = -1
+			lastShield   = -1
+		}
+		else if ( !wasTitan && titan )
+		{
+			lastRegenTab = GetTitanCurrentRegenTab( player )
+			lastShield   = player.GetShieldHealth()
+		}
+
+		// ---- Titan damage: shield and health segments ----
+		if ( titan )
+		{
+			int shield = player.GetShieldHealth()
+			if ( lastShield >= 0 && shield < lastShield && now - lastShieldPlay > BH_MP_SHIELD_INTERVAL )
+			{
+				BH_Debug( "mp: Titan shield " + lastShield + " -> " + shield )
+				BH_Play( "shield_damage" )
+				lastShieldPlay = now
+			}
+			lastShield = shield
+
+			int regenTab = GetTitanCurrentRegenTab( player )
+			if ( lastRegenTab >= 0 && regenTab < lastRegenTab )
+			{
+				BH_Debug( "mp: Titan health segment lost (" + lastRegenTab + " -> " + regenTab + ")" )
+				BH_Play( "titan_hit" )
+			}
+			lastRegenTab = regenTab
+			wasDoomed = GetDoomedState( player )
+		}
+		else
+		{
+			wasDoomed = false
+		}
+
+		// ---- Our auto-Titan (not embarked): remember it while it's alive,
+		// play once when that Titan dies. Embarking removes the entity, so
+		// it's no longer valid then and nothing plays. ----
+		entity pet = player.GetPetTitan()
+		if ( IsValid( pet ) && IsAlive( pet ) )
+		{
+			petTitan = pet
+		}
+		else if ( IsValid( petTitan ) && !IsAlive( petTitan ) && !titan )
+		{
+			BH_Debug( "mp: auto-Titan destroyed" )
+			BH_Play( "titan_destroyed" )
+			petTitan = null
+		}
+		else if ( !IsValid( petTitan ) )
+		{
+			petTitan = null
+		}
+
+		// ---- Movement ----
+		bool onGround    = player.IsOnGround()
+		bool wallRunning = player.IsWallRunning()
+		bool traversing  = player.IsTraversing()
+		bool ziplining   = player.IsZiplining()
+
+		if ( titan )
+		{
+			// Titan dash: a sudden gain in horizontal speed.
+			float before = Length( < lastVelocity.x, lastVelocity.y, 0 > )
+			float after  = Length( < velocity.x, velocity.y, 0 > )
+			if ( after - before > BH_MP_DASH_KICK && now - lastDash > BH_MP_DEDUPE )
+			{
+				BH_Debug( "mp: Titan dash (" + before + " -> " + after + " units/s)" )
+				BH_Play( "player_dodge" )
+				lastDash = now
+			}
+		}
+		else
+		{
+			if ( wasOnGround && !onGround && velocity.z > BH_MP_JUMP_SPEED && now - lastJump > BH_MP_DEDUPE )
+			{
+				BH_Debug( "mp: jump (" + velocity.z + " units/s up)" )
+				BH_Play( "player_jump" )
+				lastJump = now
+			}
+			else if ( !wasOnGround && !onGround && !wallRunning && !ziplining
+				&& velocity.z - lastVelocity.z > BH_MP_DOUBLE_JUMP_KICK && now - lastJump > BH_MP_DEDUPE )
+			{
+				BH_Debug( "mp: air jump (" + lastVelocity.z + " -> " + velocity.z + ")" )
+				BH_Play( "player_jump" )
+				lastJump = now
+			}
+
+			if ( wallRunning != wasWallRunning )
+				BH_Play( wallRunning ? "begin_wallrun" : "end_wallrun" )
+
+			if ( traversing && !wasTraversing )
+			{
+				BH_Debug( "mp: mantle" )
+				BH_Play( "player_mantle" )
+			}
+
+			if ( ziplining && ( !wasZiplining || now >= nextZipline ) )
+			{
+				if ( !wasZiplining )
+					BH_Debug( "mp: zipline" )
+				BH_Play( "zipline" )
+				nextZipline = now + BH_MP_ZIPLINE_INTERVAL
+			}
+		}
+
+		if ( wasOnGround && !onGround )
+			airStart = now
+		if ( !wasOnGround && onGround && now - airStart > BH_MP_MIN_AIR_TIME )
+			BH_Play( "player_land" )
+
+		wasOnGround    = onGround
+		wasWallRunning = wallRunning
+		wasTraversing  = traversing
+		wasZiplining   = ziplining
+		wasTitan       = titan
+		lastVelocity   = velocity
+	}
 }
 
 #endif
